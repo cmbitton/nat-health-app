@@ -1,0 +1,68 @@
+{% extends 'base.html' %}
+{% from 'components/breadcrumb.html' import render_breadcrumb %}
+
+{% block breadcrumb %}
+{{ render_breadcrumb(breadcrumbs) }}
+{% endblock %}
+
+{% block content %}
+<div class="container">
+
+    <div class="region-header">
+        <h1>{{ city_name }} Health Inspections</h1>
+        <div class="region-stats">
+            <div class="region-stat">
+                <strong>{{ rows|length }}</strong>
+                Locations
+            </div>
+            <div class="region-stat">
+                <strong>{{ region_display }}</strong>
+                Region
+            </div>
+        </div>
+    </div>
+
+    {% if rows %}
+    <div class="leaderboard">
+        <div class="leaderboard-header">
+            <div>#</div>
+            <div>Facility</div>
+            <div>Score</div>
+            <div>Risk Tier</div>
+            <div>Last Inspected</div>
+        </div>
+        {% for r, insp in rows %}
+        {% set tier = insp.score_tier if insp else none %}
+        <a href="/{{ region }}/{{ r.slug }}/" class="leaderboard-row">
+            <div class="rank-num">{{ loop.index }}</div>
+            <div>
+                <div class="lb-name">{{ r.name }}</div>
+                <div class="lb-address">{{ r.address or '' }}</div>
+            </div>
+            <div class="lb-score"
+                {% if tier %}style="color: var(--tier-{{ tier }})"{% endif %}>
+                {% if insp and insp.score is not none %}{{ insp.score }}{% else %}—{% endif %}
+            </div>
+            <div>
+                {% if tier %}
+                <span class="tier-badge tier-{{ tier }}">
+                    {% if tier == 'low' %}Low Risk
+                    {% elif tier == 'medium' %}Moderate Risk
+                    {% else %}High Risk{% endif %}
+                </span>
+                {% else %}
+                <span style="color: var(--text-muted); font-size: 13px;">No data</span>
+                {% endif %}
+            </div>
+            <div style="font-size: 13px; color: var(--text-muted); font-family: 'DM Mono', monospace;">
+                {% if insp %}{{ insp.inspection_date|format_date }}{% else %}—{% endif %}
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p style="color: var(--text-secondary);">No locations found.</p>
+    {% endif %}
+
+</div>
+{% endblock %}

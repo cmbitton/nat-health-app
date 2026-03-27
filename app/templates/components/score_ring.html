@@ -1,0 +1,13 @@
+{% macro render_score_ring(score, tier) %}
+<div class="score-block">
+    <div class="score-ring{% if tier == 'medium' %} tier-medium{% elif tier == 'high' %} tier-high{% endif %}">
+        <div class="score-number">{{ score if score is not none else '—' }}</div>
+        <div class="score-label">Score</div>
+    </div>
+    {% if tier %}
+    <span class="tier-badge tier-{{ tier }}">
+        {% if tier == 'low' %}Low Risk{% elif tier == 'medium' %}Medium Risk{% else %}High Risk{% endif %}
+    </span>
+    {% endif %}
+</div>
+{% endmacro %}

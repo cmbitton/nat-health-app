@@ -1,0 +1,103 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="hero">
+    <h1>Restaurant Health Inspection Scores</h1>
+    <p>Search scores, violation history, and risk tiers for restaurants across the US.</p>
+    <form class="search-form" action="/" method="get">
+        <input
+            type="text"
+            name="q"
+            class="search-input"
+            placeholder="Search restaurant name..."
+            value="{{ search_query or '' }}"
+            autocomplete="off"
+        >
+        <button type="submit" class="search-btn">Search</button>
+    </form>
+</div>
+
+<div class="container">
+
+    {% if search_results is not none %}
+    <div class="section-header">
+        <h2>
+            {% if search_results %}
+                {{ search_results|length }} result{{ 's' if search_results|length != 1 else '' }} for "{{ search_query }}"
+            {% else %}
+                No results for "{{ search_query }}"
+            {% endif %}
+        </h2>
+    </div>
+    {% if search_results %}
+    <div class="feed-list" style="margin-bottom: 32px;">
+        {% for r in search_results %}
+        <a href="/{{ r.region }}/{{ r.slug }}/" class="feed-item">
+            <div class="feed-name">{{ r.name }}</div>
+            <div class="feed-meta">{{ r.city }}, {{ r.state }} · {{ r.region.replace('-', ' ').title() }}</div>
+            <div class="feed-score"
+                {% if r.score_tier %}style="color: var(--tier-{{ r.score_tier }})"{% endif %}>
+                {% if r.latest_score is not none %}{{ r.latest_score }}{% else %}—{% endif %}
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p style="color: var(--text-secondary); margin-bottom: 32px;">Try a different search term.</p>
+    {% endif %}
+    {% endif %}
+
+    {% if regions %}
+    <div id="regions">
+        <div class="section-header">
+            <h2>Available Regions</h2>
+        </div>
+        <div class="regions-grid">
+            {% for item in regions %}
+            <a href="/{{ item.region }}/" class="region-card">
+                <h3>{{ item.region.replace('-', ' ').title() }}</h3>
+                <p>{{ item.count }} restaurant{{ 's' if item.count != 1 else '' }}</p>
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    {% if recent_inspections %}
+    <div class="section-header">
+        <h2>Recently Inspected</h2>
+    </div>
+    <div class="feed-list">
+        {% for inspection, restaurant in recent_inspections %}
+        <a href="/{{ restaurant.region }}/{{ restaurant.slug }}/" class="feed-item">
+            <div class="feed-name">{{ restaurant.name }}</div>
+            <div class="feed-meta">{{ restaurant.city }}, {{ restaurant.state }} · {{ inspection.inspection_date|format_date }}</div>
+            <div class="feed-score"
+                {% if inspection.score_tier %}style="color: var(--tier-{{ inspection.score_tier }})"{% endif %}>
+                {% if inspection.score is not none %}{{ inspection.score }}{% else %}—{% endif %}
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if low_scores_this_month %}
+    <div class="section-header">
+        <h2>Lowest Scores This Month</h2>
+    </div>
+    <div class="feed-list">
+        {% for inspection, restaurant in low_scores_this_month %}
+        <a href="/{{ restaurant.region }}/{{ restaurant.slug }}/" class="feed-item">
+            <div class="feed-name">{{ restaurant.name }}</div>
+            <div class="feed-meta">{{ restaurant.city }}, {{ restaurant.state }} · {{ inspection.inspection_date|format_date }}</div>
+            <div class="feed-score"
+                {% if inspection.score_tier %}style="color: var(--tier-{{ inspection.score_tier }})"{% endif %}>
+                {% if inspection.score is not none %}{{ inspection.score }}{% else %}—{% endif %}
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+</div>
+{% endblock %}

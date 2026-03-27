@@ -1,0 +1,11 @@
+{% macro render_breadcrumb(crumbs) %}
+<div class="breadcrumb">
+    {% for crumb in crumbs %}
+        {% if not loop.last and crumb.url is defined and crumb.url %}
+            <a href="{{ crumb.url }}">{{ crumb.name }}</a><span>›</span>
+        {% else %}
+            {{ crumb.name }}
+        {% endif %}
+    {% endfor %}
+</div>
+{% endmacro %}

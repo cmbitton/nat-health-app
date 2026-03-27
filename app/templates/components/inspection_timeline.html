@@ -1,0 +1,19 @@
+{% macro render_timeline_item(inspection) %}
+<div class="timeline-item">
+    <div class="timeline-date">{{ inspection.inspection_date|format_date }}</div>
+    <div class="timeline-content">
+        <div class="timeline-type">{{ inspection.inspection_type or 'Inspection' }}</div>
+        <div class="timeline-detail">
+            {{ inspection.violation_summary }}
+            {% if inspection.result %}
+            <span style="margin-left: 6px; font-style: italic;">Result: {{ inspection.result }}</span>
+            {% endif %}
+        </div>
+    </div>
+    {% if inspection.score is not none %}
+    <div class="timeline-score {{ inspection.score_css_class }}">{{ inspection.score }}</div>
+    {% else %}
+    <div class="timeline-score" style="color: var(--text-muted);">N/A</div>
+    {% endif %}
+</div>
+{% endmacro %}

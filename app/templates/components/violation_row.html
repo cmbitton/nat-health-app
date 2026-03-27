@@ -1,0 +1,14 @@
+{% macro render_violation_row(violation) %}
+<div class="violation-row">
+    <div class="severity-dot {{ violation.severity or 'minor' }}"></div>
+    <div class="violation-text">
+        {{ violation.description }}
+        {% if violation.corrected_on_site %}
+        <span style="font-size:12px; color: var(--tier-low); margin-left: 6px;">(corrected on site)</span>
+        {% endif %}
+    </div>
+    {% if violation.violation_code %}
+    <div class="violation-code">{{ violation.violation_code }}</div>
+    {% endif %}
+</div>
+{% endmacro %}

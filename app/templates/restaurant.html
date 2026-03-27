@@ -1,0 +1,158 @@
+{% extends 'base.html' %}
+{% from 'components/breadcrumb.html' import render_breadcrumb %}
+{% from 'components/score_ring.html' import render_score_ring %}
+{% from 'components/violation_row.html' import render_violation_row %}
+{% from 'components/inspection_timeline.html' import render_timeline_item %}
+{% from 'components/nearby_restaurants.html' import render_nearby %}
+
+{% block breadcrumb %}
+{{ render_breadcrumb(breadcrumbs) }}
+{% endblock %}
+
+{% block content %}
+<div class="container">
+
+    <!-- HEADER CARD -->
+    <div class="header-card">
+        <div class="restaurant-info">
+            <h1>{{ restaurant.name }}</h1>
+            <div class="restaurant-meta">
+                {% if restaurant.address %}
+                <div class="meta-line">
+                    <svg class="meta-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+                        <circle cx="12" cy="10" r="3"/>
+                    </svg>
+                    {{ restaurant.address }}, {{ restaurant.city }}, {{ restaurant.state }} {{ restaurant.zip or '' }}
+                </div>
+                {% endif %}
+                {% if restaurant.cuisine_type %}
+                <div class="meta-line">
+                    <svg class="meta-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                        <line x1="16" y1="2" x2="16" y2="6"/>
+                        <line x1="8" y1="2" x2="8" y2="6"/>
+                        <line x1="3" y1="10" x2="21" y2="10"/>
+                    </svg>
+                    {{ restaurant.cuisine_type }}
+                </div>
+                {% endif %}
+                {% if restaurant.license_type %}
+                <div class="meta-line">
+                    <svg class="meta-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                        <polyline points="14 2 14 8 20 8"/>
+                    </svg>
+                    License: {{ restaurant.license_type }}
+                </div>
+                {% endif %}
+            </div>
+            {% if latest_inspection %}
+            <div class="last-inspected">Last inspected: {{ latest_inspection.inspection_date|format_date }}</div>
+            {% endif %}
+        </div>
+        {{ render_score_ring(restaurant.latest_score, restaurant.score_tier) }}
+    </div>
+
+    <!-- AI SUMMARY -->
+    <div class="summary-block">
+        {% if restaurant.ai_summary %}
+            {% for para in restaurant.ai_summary.split('\n\n') %}
+                <p>{{ para }}</p>
+            {% endfor %}
+        {% else %}
+        <p>{{ restaurant.name }} is a {{ restaurant.cuisine_type or 'restaurant' }} located at
+        {{ restaurant.address }}, {{ restaurant.city }}, {{ restaurant.state }}.</p>
+        <p>Health inspection records are available below. Check the inspection history and violations
+        section for details on past inspections conducted by the local health department.</p>
+        {% endif %}
+    </div>
+
+    <!-- STAT CARDS -->
+    <div class="stat-row">
+        <div class="stat-card">
+            <div class="stat-value">{{ total_inspections }}</div>
+            <div class="stat-name">Inspections</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value {% if total_critical > 0 %}red{% else %}green{% endif %}">{{ total_critical }}</div>
+            <div class="stat-name">Critical</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value {% if total_major > 0 %}yellow{% endif %}">{{ total_major }}</div>
+            <div class="stat-name">Major</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">{{ total_minor }}</div>
+            <div class="stat-name">Minor</div>
+        </div>
+    </div>
+
+    <!-- INSPECTION TIMELINE -->
+    {% if inspections %}
+    <div class="timeline-section">
+        <div class="section-title">Inspection History</div>
+        {% for inspection in inspections %}
+            {{ render_timeline_item(inspection) }}
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- VIOLATIONS - MOST RECENT INSPECTION -->
+    {% if latest_inspection %}
+    <div class="violations-section">
+        <div class="section-title">
+            Violations — {{ latest_inspection.inspection_date|format_date }} Inspection
+        </div>
+
+        {% if latest_violations %}
+            {% for violation in latest_violations %}
+                {{ render_violation_row(violation) }}
+            {% endfor %}
+        {% else %}
+        <div style="padding: 16px 0; color: var(--text-secondary); font-size: 14px;">
+            No violations recorded for this inspection.
+        </div>
+        {% endif %}
+
+        <div class="violation-legend">
+            <div class="legend-item">
+                <div class="severity-dot critical" style="margin-top:0"></div>
+                Priority (Critical)
+            </div>
+            <div class="legend-item">
+                <div class="severity-dot major" style="margin-top:0"></div>
+                Priority Foundation (Major)
+            </div>
+            <div class="legend-item">
+                <div class="severity-dot minor" style="margin-top:0"></div>
+                Core (Minor)
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- MAP CTA -->
+    {% if restaurant.latitude and restaurant.longitude %}
+    <a href="https://inspectri.com/?lat={{ restaurant.latitude }}&lng={{ restaurant.longitude }}&zoom=17" class="map-cta" target="_blank" rel="noopener">
+    {% else %}
+    <a href="https://inspectri.com/" class="map-cta" target="_blank" rel="noopener">
+    {% endif %}
+        <div class="map-cta-text">
+            View on the interactive map
+            <span>See nearby restaurants and compare scores</span>
+        </div>
+        <div class="map-cta-arrow">→</div>
+    </a>
+
+    <!-- NEARBY RESTAURANTS -->
+    {{ render_nearby(nearby, restaurant.region) }}
+
+</div>
+{% endblock %}
+
+{% block structured_data %}
+<script type="application/ld+json">
+{{ json_ld | tojson(indent=2) }}
+</script>
+{% endblock %}

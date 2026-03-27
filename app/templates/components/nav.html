@@ -1,0 +1,15 @@
+<nav>
+    <a href="/" class="nav-brand">
+        {% set parts = config['SITE_NAME'].split(' ') %}
+        {% if parts|length > 1 %}
+            {{ parts[:-1]|join(' ') }}<span>{{ parts[-1] }}</span>
+        {% else %}
+            {{ config['SITE_NAME'] }}
+        {% endif %}
+    </a>
+    <div class="nav-links">
+        <a href="/">Home</a>
+        <a href="/#regions">Regions</a>
+        <a href="/about">About</a>
+    </div>
+</nav>
