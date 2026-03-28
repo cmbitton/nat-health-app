@@ -53,14 +53,14 @@ jobs:
       - name: RI — Sync database
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-        run: fly ssh console -a forkgrade -C "python3 scripts/sync_db.py"
+        run: flyctl ssh console -a forkgrade -C "python3 scripts/sync_db.py"
 
       - name: NYC — Daily import (last 3 days)
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-        run: fly ssh console -a forkgrade -C "python3 scripts/import_nyc.py --days=3"
+        run: flyctl ssh console -a forkgrade -C "python3 scripts/import_nyc.py --days=3"
 
       - name: AI — Generate missing summaries
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-        run: fly ssh console -a forkgrade -C "python3 scripts/generate_summaries.py --limit 100"
+        run: flyctl ssh console -a forkgrade -C "python3 scripts/generate_summaries.py --limit 100"
