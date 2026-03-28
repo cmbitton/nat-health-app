@@ -6,4 +6,4 @@ __pycache__/
 *.pyc
 .git/
 .github/
-data/
+data/history.json
