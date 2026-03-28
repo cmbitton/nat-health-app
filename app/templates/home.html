@@ -41,7 +41,7 @@
         {% for r in search_results %}
         <a href="/{{ r.region }}/{{ r.slug }}/" class="feed-item">
             <div class="feed-name">{{ r.display_name }}</div>
-            <div class="feed-meta">{{ r.city }}, {{ r.state }} · {{ r.region.replace('-', ' ').title() }}</div>
+            <div class="feed-meta">{{ r.city }}, {{ r.state }} · {{ r.region | region_display }}</div>
             <div class="feed-score"
                 {% if r.score_tier %}style="color: var(--tier-{{ r.score_tier }})"{% endif %}>
                 {% if r.latest_score is not none %}{{ r.latest_score }}{% else %}—{% endif %}
@@ -62,7 +62,7 @@
         <div class="regions-grid">
             {% for item in regions %}
             <a href="/{{ item.region }}/" class="region-card">
-                <h3>{{ item.region.replace('-', ' ').title() }}</h3>
+                <h3>{{ item.region | region_display }}</h3>
                 <p>{{ item.count }} restaurant{{ 's' if item.count != 1 else '' }}</p>
             </a>
             {% endfor %}

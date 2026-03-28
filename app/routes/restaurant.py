@@ -2,9 +2,10 @@ import math
 import re
 from flask import render_template, current_app, abort
 from sqlalchemy.orm import selectinload
-from app.db import db
+from app.db import db, cache
 from app.models.restaurant import Restaurant
 from app.models.inspection import Inspection
+from app.utils import get_region_display
 
 
 def _cuisine_slug(label: str) -> str:
@@ -33,6 +34,7 @@ def get_nearby_restaurants(restaurant, limit=3):
                         restaurant.latitude - r, restaurant.latitude + r),
                     Restaurant.longitude.between(
                         restaurant.longitude - r, restaurant.longitude + r),
+                    Restaurant.inspections.any(),
                 )
                 .limit(50)
                 .all()
@@ -54,7 +56,8 @@ def get_nearby_restaurants(restaurant, limit=3):
         .filter(
             Restaurant.region == restaurant.region,
             Restaurant.city == restaurant.city,
-            Restaurant.id != restaurant.id
+            Restaurant.id != restaurant.id,
+            Restaurant.inspections.any(),
         )
         .limit(limit)
         .all()
@@ -63,6 +66,11 @@ def get_nearby_restaurants(restaurant, limit=3):
 
 def render_restaurant(restaurant):
     """Render the restaurant detail page."""
+    cache_key = f'restaurant_{restaurant.id}'
+    cached = cache.get(cache_key)
+    if cached:
+        return cached
+
     inspections = (
         Inspection.query
         .options(selectinload(Inspection.violations))
@@ -71,8 +79,24 @@ def render_restaurant(restaurant):
         .all()
     )
 
-    latest_inspection = inspections[0] if inspections else None
-    latest_violations = latest_inspection.violations if latest_inspection else []
+    if not inspections:
+        abort(404)
+
+    latest_inspection = inspections[0]
+    latest_violations = latest_inspection.violations
+
+    # Determine what NYC grade to surface.
+    # - A/B/C/Z/N/P from latest inspection → show as-is
+    # - No grade on a cycle inspection → restaurant failed initial and is
+    #   awaiting re-inspection; NYC requires them to post "Grade Pending"
+    # - No grade on a compliance/admin visit → not a grading event, show nothing
+    _itype = (latest_inspection.inspection_type or '').lower()
+    if latest_inspection.grade in ('A', 'B', 'C', 'Z', 'N', 'P'):
+        current_grade = latest_inspection.grade
+    elif not latest_inspection.grade and 'cycle inspection' in _itype:
+        current_grade = 'Z'  # render as "Grade Pending"
+    else:
+        current_grade = None
 
     total_inspections = len(inspections)
 
@@ -117,7 +141,7 @@ def render_restaurant(restaurant):
                     {
                         "@type": "ListItem",
                         "position": 2,
-                        "name": restaurant.region.replace('-', ' ').title(),
+                        "name": get_region_display(restaurant.region),
                         "item": current_app.config['BASE_URL'] + f'/{restaurant.region}/'
                     },
                     {
@@ -163,14 +187,14 @@ def render_restaurant(restaurant):
 
     breadcrumbs = [
         {'name': 'Home', 'url': '/'},
-        {'name': restaurant.region.replace('-', ' ').title(), 'url': f'/{restaurant.region}/'},
+        {'name': get_region_display(restaurant.region), 'url': f'/{restaurant.region}/'},
         {'name': restaurant.city or restaurant.region, 'url': f'/{restaurant.region}/{restaurant.city_slug}/'},
         {'name': restaurant.display_name}
     ]
 
     cuisine_slug = _cuisine_slug(restaurant.cuisine_type) if restaurant.cuisine_type else None
 
-    return render_template(
+    response = render_template(
         'restaurant.html',
         title=f'{restaurant.display_name} Health Inspection Score & History — {restaurant.city}, {restaurant.state} | {site_name}',
         description=description,
@@ -179,6 +203,7 @@ def render_restaurant(restaurant):
         inspections=inspections,
         latest_inspection=latest_inspection,
         latest_violations=latest_violations,
+        current_grade=current_grade,
         total_inspections=total_inspections,
         total_critical=total_critical,
         total_major=total_major,
@@ -188,3 +213,5 @@ def render_restaurant(restaurant):
         breadcrumbs=breadcrumbs,
         cuisine_slug=cuisine_slug,
     )
+    cache.set(cache_key, response, timeout=300)
+    return response

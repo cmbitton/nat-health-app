@@ -23,7 +23,7 @@
                         <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
                         <circle cx="12" cy="10" r="3"/>
                     </svg>
-                    {{ restaurant.address }}, {{ restaurant.city }}, {{ restaurant.state }} {{ restaurant.zip or '' }}
+                    {{ restaurant.address }}{% if restaurant.city %}, {{ restaurant.city }}{% endif %}, {{ restaurant.state }} {{ restaurant.zip or '' }}
                 </div>
                 {% endif %}
                 {% if restaurant.cuisine_type %}
@@ -51,7 +51,7 @@
             <div class="last-inspected">Last inspected: {{ latest_inspection.inspection_date|format_date }}</div>
             {% endif %}
         </div>
-        {{ render_score_ring(restaurant.latest_score, restaurant.score_tier, restaurant.score_display_tier) }}
+        {{ render_score_ring(restaurant.latest_score, restaurant.score_tier, restaurant.score_display_tier, grade=current_grade, region=restaurant.region) }}
     </div>
 
     <!-- AI SUMMARY -->
@@ -62,7 +62,7 @@
             {% endfor %}
         {% else %}
         <p>{{ restaurant.display_name }} is a {{ restaurant.cuisine_type or 'restaurant' }} located at
-        {{ restaurant.address }}, {{ restaurant.city }}, {{ restaurant.state }}.</p>
+        {{ restaurant.address }}{% if restaurant.city %}, {{ restaurant.city }}{% endif %}, {{ restaurant.state }}.</p>
         <p>Health inspection records are available below. Check the inspection history and violations
         section for details on past inspections conducted by the local health department.</p>
         {% endif %}
@@ -117,6 +117,7 @@
             Violations — {{ latest_inspection.inspection_date|format_date }} Inspection
         </div>
 
+        <div class="violation-rows">
         {% if latest_violations %}
             {% for violation in latest_violations %}
                 {{ render_violation_row(violation) }}
@@ -126,8 +127,19 @@
             No violations recorded for this inspection.
         </div>
         {% endif %}
+        </div>
 
         <div class="violation-legend">
+            {% if restaurant.region == 'nyc' %}
+            <div class="legend-item">
+                <div class="severity-dot critical" style="margin-top:0"></div>
+                Critical
+            </div>
+            <div class="legend-item">
+                <div class="severity-dot minor" style="margin-top:0"></div>
+                Not Critical
+            </div>
+            {% else %}
             <div class="legend-item">
                 <div class="severity-dot critical" style="margin-top:0"></div>
                 Priority (Critical)
@@ -140,11 +152,13 @@
                 <div class="severity-dot minor" style="margin-top:0"></div>
                 Core (Minor)
             </div>
+            {% endif %}
         </div>
     </div>
     {% endif %}
 
-    <!-- MAP CTA -->
+    <!-- MAP CTA (RI only) -->
+    {% if restaurant.region == 'ri' %}
     {% if restaurant.latitude and restaurant.longitude %}
     <a href="https://inspectri.com/?lat={{ restaurant.latitude }}&lng={{ restaurant.longitude }}&zoom=17" class="map-cta" target="_blank" rel="noopener">
     {% else %}
@@ -156,22 +170,31 @@
         </div>
         <div class="map-cta-arrow">→</div>
     </a>
+    {% endif %}
 
     <!-- NEARBY RESTAURANTS -->
     {{ render_nearby(nearby, restaurant.region) }}
 
     <!-- INTERNAL LINKS -->
     <div class="internal-links">
-        <a href="/{{ restaurant.region }}/{{ restaurant.city_slug }}/">
-            All facilities in {{ restaurant.city }}
+        <div class="internal-links-header">Explore More</div>
+        {% if restaurant.city %}
+        <a href="/{{ restaurant.region }}/{{ restaurant.city_slug }}/" class="internal-link">
+            <span class="internal-link-arrow">→</span>
+            All restaurants in {{ restaurant.city }}
         </a>
+        {% endif %}
         {% if restaurant.cuisine_type and cuisine_slug %}
-        <a href="/{{ restaurant.region }}/{{ cuisine_slug }}/">
-            More {{ restaurant.cuisine_type }} in {{ restaurant.region.replace('-', ' ').title() }}
+        <a href="/{{ restaurant.region }}/{{ cuisine_slug }}/" class="internal-link">
+            <span class="internal-link-arrow">→</span>
+            {{ restaurant.cuisine_type }} restaurants in {{ restaurant.region | region_display }}
         </a>
-        <a href="/{{ restaurant.region }}/{{ restaurant.city_slug }}/{{ cuisine_slug }}/">
-            {{ restaurant.cuisine_type }} in {{ restaurant.city }}
+        {% if restaurant.city %}
+        <a href="/{{ restaurant.region }}/{{ restaurant.city_slug }}/{{ cuisine_slug }}/" class="internal-link">
+            <span class="internal-link-arrow">→</span>
+            {{ restaurant.cuisine_type }} restaurants in {{ restaurant.city }}
         </a>
+        {% endif %}
         {% endif %}
     </div>
 

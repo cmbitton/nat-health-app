@@ -4,10 +4,11 @@ from flask import Blueprint, render_template, request, abort, current_app
 from sqlalchemy import func
 from sqlalchemy.orm import selectinload
 
-from app.db import db
+from app.db import db, cache
 from app.models.restaurant import Restaurant
 from app.models.inspection import Inspection
 from app.routes.restaurant import render_restaurant
+from app.utils import get_region_display
 
 region_bp = Blueprint('region', __name__)
 
@@ -24,8 +25,13 @@ def _latest_inspection_subquery():
     )
 
 
+_NON_RESTAURANT_TYPES = frozenset([
+    'School / Childcare', 'Healthcare Facility', 'Grocery / Market', 'Catering'
+])
+
+
 def _scored_restaurants(region, order='asc', limit=5):
-    """(Restaurant, Inspection) tuples sorted by risk_score. One SQL query."""
+    """(Restaurant, Inspection) tuples sorted by risk_score, restaurants only."""
     sq = _latest_inspection_subquery()
     col = Inspection.risk_score.asc() if order == 'asc' else Inspection.risk_score.desc()
     return (
@@ -38,6 +44,8 @@ def _scored_restaurants(region, order='asc', limit=5):
         .filter(
             Restaurant.region == region,
             Inspection.risk_score.isnot(None),
+            Restaurant.cuisine_type.isnot(None),
+            ~Restaurant.cuisine_type.in_(_NON_RESTAURANT_TYPES),
         )
         .order_by(col)
         .limit(limit)
@@ -75,11 +83,16 @@ def _home_state(region: str) -> str | None:
 
 
 def _get_cuisine_types(region):
-    """Return list of {slug, label, count} dicts for cuisine types in region."""
+    """Return list of {slug, label, count} dicts for cuisine types in region.
+
+    Types with fewer than 20 locations are excluded to keep Browse by Type clean.
+    """
     rows = (
         db.session.query(Restaurant.cuisine_type, func.count(Restaurant.id))
+        .join(Inspection, Restaurant.id == Inspection.restaurant_id)
         .filter(Restaurant.region == region, Restaurant.cuisine_type.isnot(None))
         .group_by(Restaurant.cuisine_type)
+        .having(func.count(Restaurant.id) >= 20)
         .all()
     )
     return [
@@ -97,7 +110,7 @@ def _cuisine_rows(region, cuisine_type, city_name=None, sort='date', page=1, per
     sq = _latest_inspection_subquery()
     q = (
         db.session.query(Restaurant, Inspection)
-        .outerjoin(sq, sq.c.restaurant_id == Restaurant.id)
+        .join(sq, sq.c.restaurant_id == Restaurant.id)
         .outerjoin(
             Inspection,
             db.and_(
@@ -136,7 +149,7 @@ def render_cuisine(region, cuisine_slug_str, cuisine_label, rows,
                    total=0, page=1, per_page=25, sort='date'):
     site_name      = current_app.config['SITE_NAME']
     base_url       = current_app.config['BASE_URL']
-    region_display = region.replace('-', ' ').title()
+    region_display = get_region_display(region)
 
     if city_name:
         title         = f'{cuisine_label} Health Inspections in {city_name} | {site_name}'
@@ -191,11 +204,12 @@ def render_neighborhood(region, city_slug_str, city_name, restaurants_with_score
                         sort='date', page=1, per_page=25, total=None):
     site_name      = current_app.config['SITE_NAME']
     base_url       = current_app.config['BASE_URL']
-    region_display = region.replace('-', ' ').title()
+    region_display = get_region_display(region)
 
     # Cuisine types present in this city for sub-navigation
     city_cuisine_rows = (
         db.session.query(Restaurant.cuisine_type, func.count(Restaurant.id))
+        .join(Inspection, Restaurant.id == Inspection.restaurant_id)
         .filter(Restaurant.region == region, Restaurant.city == city_name,
                 Restaurant.cuisine_type.isnot(None))
         .group_by(Restaurant.cuisine_type)
@@ -241,18 +255,27 @@ def render_neighborhood(region, city_slug_str, city_name, restaurants_with_score
 def region_index(region):
     q = request.args.get('q', '').strip()
 
-    count = Restaurant.query.filter_by(region=region).count()
+    count = (
+        Restaurant.query
+        .filter_by(region=region)
+        .filter(Restaurant.inspections.any())
+        .count()
+    )
     if count == 0:
         abort(404)
 
     site_name      = current_app.config['SITE_NAME']
     base_url       = current_app.config['BASE_URL']
-    region_display = region.replace('-', ' ').title()
+    region_display = get_region_display(region)
 
     if q:
         search_results = (
             Restaurant.query
-            .filter(Restaurant.region == region, Restaurant.name.ilike(f'%{q}%'))
+            .filter(
+                Restaurant.region == region,
+                Restaurant.name.ilike(f'%{q}%'),
+                Restaurant.inspections.any(),
+            )
             .order_by(Restaurant.name)
             .limit(20)
             .all()
@@ -276,40 +299,57 @@ def region_index(region):
             cuisine_types      = [],
         )
 
-    total_inspections = (
-        db.session.query(func.count(Inspection.id))
-        .join(Restaurant)
-        .filter(Restaurant.region == region)
-        .scalar()
-    )
+    cache_key = f'region_index_{region}'
+    cached = cache.get(cache_key)
+    if cached:
+        (total_inspections, neighborhoods, top_cities,
+         recent_inspections, bottom_restaurants, cuisine_types) = cached
+    else:
+        total_inspections = (
+            db.session.query(func.count(Inspection.id))
+            .join(Restaurant)
+            .filter(Restaurant.region == region)
+            .scalar()
+        )
 
-    home_state = _home_state(region)
-    city_q = (
-        db.session.query(Restaurant.city, func.count(Restaurant.id))
-        .filter(Restaurant.region == region)
-    )
-    if home_state:
-        city_q = city_q.filter(Restaurant.state == home_state)
-    city_rows = city_q.group_by(Restaurant.city).order_by(Restaurant.city).all()
-    neighborhoods = [
-        {'city': city, 'count': cnt, 'city_slug': _city_slug(city or '')}
-        for city, cnt in city_rows
-    ]
-    top_cities = sorted(neighborhoods, key=lambda n: n['count'], reverse=True)[:8]
+        home_state = _home_state(region)
+        city_q = (
+            db.session.query(Restaurant.city, func.count(Restaurant.id))
+            .join(Inspection, Restaurant.id == Inspection.restaurant_id)
+            .filter(
+                Restaurant.region == region,
+                Restaurant.city.isnot(None),
+                Restaurant.city != '',
+                Restaurant.city != '0',
+            )
+        )
+        if home_state:
+            city_q = city_q.filter(Restaurant.state == home_state)
+        city_rows = city_q.group_by(Restaurant.city).order_by(Restaurant.city).all()
+        neighborhoods = [
+            {'city': city, 'count': cnt, 'city_slug': _city_slug(city or '')}
+            for city, cnt in city_rows
+        ]
+        top_cities = sorted(neighborhoods, key=lambda n: n['count'], reverse=True)[:8]
 
-    recent_inspections = (
-        db.session.query(Inspection, Restaurant)
-        .join(Restaurant)
-        .filter(Restaurant.region == region)
-        .order_by(Inspection.inspection_date.desc())
-        .limit(20)
-        .all()
-    )
+        recent_inspections = (
+            db.session.query(Inspection, Restaurant)
+            .join(Restaurant)
+            .filter(Restaurant.region == region)
+            .order_by(Inspection.inspection_date.desc())
+            .limit(20)
+            .all()
+        )
 
-    top_restaurants    = _scored_restaurants(region, order='asc',  limit=5)
-    bottom_restaurants = _scored_restaurants(region, order='desc', limit=5)
+        bottom_restaurants = _scored_restaurants(region, order='desc', limit=5)
+        cuisine_types = _get_cuisine_types(region)
 
-    cuisine_types = _get_cuisine_types(region)
+        cache.set(cache_key, (
+            total_inspections, neighborhoods, top_cities,
+            recent_inspections, bottom_restaurants, cuisine_types,
+        ), timeout=600)
+
+    top_restaurants = []
 
     return render_template(
         'region.html',
@@ -355,7 +395,7 @@ def region_sub(region, path_slug):
         sq = _latest_inspection_subquery()
         q = (
             db.session.query(Restaurant, Inspection)
-            .outerjoin(sq, sq.c.restaurant_id == Restaurant.id)
+            .join(sq, sq.c.restaurant_id == Restaurant.id)
             .outerjoin(
                 Inspection,
                 db.and_(

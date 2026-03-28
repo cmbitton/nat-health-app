@@ -29,7 +29,8 @@ def index():
     search_results = None
     if q:
         search_results = Restaurant.query.filter(
-            Restaurant.name.ilike(f'%{q}%')
+            Restaurant.name.ilike(f'%{q}%'),
+            Restaurant.inspections.any(),
         ).order_by(Restaurant.name).limit(20).all()
 
         return render_template(
@@ -95,7 +96,11 @@ def index():
             .all()
         )
 
-        total_restaurants = db.session.query(func.count(Restaurant.id)).scalar()
+        total_restaurants = (
+            db.session.query(func.count(func.distinct(Restaurant.id)))
+            .join(Inspection, Restaurant.id == Inspection.restaurant_id)
+            .scalar()
+        )
         total_inspections = db.session.query(func.count(Inspection.id)).scalar()
 
         cache.set(cache_key, (

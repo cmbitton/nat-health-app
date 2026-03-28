@@ -29,6 +29,10 @@ instance/
 # Data (large files — locations.json is fine, history.json is not)
 data/history.json
 
+# Database dumps and one-time migration scripts
+*.sql
+scripts/migrate_sqlite_to_pg.py
+
 # OS
 .DS_Store
 Thumbs.db

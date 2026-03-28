@@ -17,6 +17,12 @@ class Inspection(db.Model):
     result = db.Column(db.String(100))
     inspection_type = db.Column(db.String(100))
 
+    __table_args__ = (
+        db.Index('ix_inspections_restaurant_id', 'restaurant_id'),
+        db.Index('ix_inspections_restaurant_date', 'restaurant_id', 'inspection_date'),
+        db.Index('ix_inspections_date', 'inspection_date'),
+    )
+
     violations = db.relationship(
         'Violation',
         backref='inspection',

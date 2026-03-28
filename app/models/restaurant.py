@@ -67,6 +67,10 @@ class Restaurant(db.Model):
 
     __table_args__ = (
         db.UniqueConstraint('region', 'slug', name='uq_restaurant_region_slug'),
+        db.Index('ix_restaurants_region', 'region'),
+        db.Index('ix_restaurants_city', 'city'),
+        db.Index('ix_restaurants_cuisine_type', 'cuisine_type'),
+        db.Index('ix_restaurants_region_city', 'region', 'city'),
     )
 
     inspections = db.relationship(

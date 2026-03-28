@@ -14,6 +14,12 @@ def create_app():
     cache.init_app(app)
 
     # Register custom Jinja2 filters
+    from app.utils import get_region_display
+
+    @app.template_filter('region_display')
+    def region_display_filter(region):
+        return get_region_display(region)
+
     @app.template_filter('format_date')
     def format_date_filter(value):
         if value is None:

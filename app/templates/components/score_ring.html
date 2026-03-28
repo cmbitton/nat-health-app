@@ -1,4 +1,4 @@
-{% macro render_score_ring(score, tier, ring_tier=none) %}
+{% macro render_score_ring(score, tier, ring_tier=none, grade=none, region=none) %}
 {% set display_tier = ring_tier if ring_tier is not none else tier %}
 <div class="score-block">
     <div class="score-ring{% if display_tier == 'medium' %} tier-medium{% elif display_tier == 'high' %} tier-high{% endif %}">
@@ -9,6 +9,11 @@
     <span class="tier-badge tier-{{ tier }}">
         {% if tier == 'low' %}Low Risk{% elif tier == 'medium' %}Medium Risk{% else %}High Risk{% endif %}
     </span>
+    {% endif %}
+    {% if grade in ('A', 'B', 'C') %}
+    <span class="nyc-grade-badge nyc-grade-{{ grade }}">NYC Grade: {{ grade }}</span>
+    {% elif grade in ('Z', 'N', 'P') %}
+    <span class="nyc-grade-badge nyc-grade-Z">NYC Grade: Pending</span>
     {% endif %}
 </div>
 {% endmacro %}

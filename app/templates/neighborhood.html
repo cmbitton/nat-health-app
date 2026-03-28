@@ -36,15 +36,10 @@
 
         {% if city_cuisine_types %}
         <div class="browse-types-section">
-            <div class="section-header" style="margin-bottom: 12px;">
-                <h2>Browse by Type</h2>
-            </div>
-            <div class="neighborhood-grid neighborhood-grid--types">
+            <div class="cuisine-inline-list">
+                <span class="cuisine-inline-label">Browse by type:</span>
                 {% for ct in city_cuisine_types|sort(attribute='label') %}
-                <a href="/{{ region }}/{{ city_slug }}/{{ ct.slug }}/" class="neighborhood-card">
-                    <h3>{{ ct.label }}</h3>
-                    <p>{{ ct.count }} location{{ 's' if ct.count != 1 else '' }}</p>
-                </a>
+                <a href="/{{ region }}/{{ city_slug }}/{{ ct.slug }}/" class="cuisine-inline-link">{{ ct.label }} ({{ ct.count }})</a>{% if not loop.last %}<span class="cuisine-inline-sep">·</span>{% endif %}
                 {% endfor %}
             </div>
         </div>
@@ -80,6 +75,7 @@
                     <div class="lb-score"
                         {% if tier %}style="color: var(--tier-{{ tier }})"{% endif %}>
                         {% if insp and insp.score is not none %}{{ insp.score }}{% else %}—{% endif %}
+                        <div class="lb-mobile-date">{% if insp %}{{ insp.inspection_date|format_date }}{% endif %}</div>
                     </div>
                     <div>
                         {% if tier %}

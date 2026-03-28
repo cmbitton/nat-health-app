@@ -15,5 +15,9 @@ class Violation(db.Model):
     severity = db.Column(db.String(20))  # critical, major, minor
     corrected_on_site = db.Column(db.Boolean, default=False)
 
+    __table_args__ = (
+        db.Index('ix_violations_inspection_id', 'inspection_id'),
+    )
+
     def __repr__(self):
         return f'<Violation {self.violation_code} ({self.severity})>'

@@ -117,7 +117,12 @@ def sitemap_index():
 @cache.cached(timeout=3600)
 def sitemap_region(region):
     base_url = current_app.config['BASE_URL']
-    restaurants = Restaurant.query.filter_by(region=region).all()
+    restaurants = (
+        Restaurant.query
+        .filter_by(region=region)
+        .filter(Restaurant.inspections.any())
+        .all()
+    )
 
     if not restaurants:
         return _xml_response('<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"></urlset>')

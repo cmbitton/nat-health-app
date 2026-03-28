@@ -139,27 +139,27 @@ def parse_date(s):
 def parse_address(raw):
     raw = raw.strip()
     m = re.search(r'\s+([A-Za-z]{2})\s+(\d{5})\d*\s*$', raw)
-    if not m: return raw.title(), "Unknown", "RI", None
+    if not m: return raw.title(), None, "RI", None
     state, zip5 = m.group(1).upper(), m.group(2)
     before = raw[:m.start()].strip()
     if state != "RI":
         parts = before.rsplit(' ', 1)
         return (parts[0].title() if len(parts)==2 else before.title(),
-                parts[1].title() if len(parts)==2 else "Unknown", state, zip5)
+                parts[1].title() if len(parts)==2 else None, state, zip5)
     upper = before.upper()
     for i, cu in enumerate(_CITIES_UPPER):
         if upper.endswith(' ' + cu) or upper == cu:
             return before[:-(len(cu))].strip().title(), _CITIES_SORTED[i], state, zip5
     parts = before.rsplit(' ', 1)
     if len(parts) == 2: return parts[0].title(), parts[1].title(), state, zip5
-    return before.title(), "Unknown", state, zip5
+    return before.title(), None, state, zip5
 
 def make_slug(name, city):
     s = re.sub(r"['\u2019]", '', name.lower().strip())
     s = re.sub(r'[\s_/&]+', '-', s)
     s = re.sub(r'[^a-z0-9-]', '', s)
     s = re.sub(r'-+', '-', s).strip('-')
-    c = re.sub(r'[^a-z0-9-]', '', city.lower().replace(' ', '-').replace("'", ''))
+    c = re.sub(r'[^a-z0-9-]', '', (city or 'ri').lower().replace(' ', '-').replace("'", ''))
     return s + '-' + c
 
 def facility_type_label(loc):

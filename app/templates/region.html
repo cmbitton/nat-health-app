@@ -68,15 +68,10 @@
     {% endif %}
 
     {% if cuisine_types %}
-    <div class="section-header">
-        <h2>Browse by Type</h2>
-    </div>
-    <div class="neighborhood-grid neighborhood-grid--types">
+    <div class="cuisine-inline-list">
+        <span class="cuisine-inline-label">Browse by type:</span>
         {% for ct in cuisine_types|sort(attribute='label') %}
-        <a href="/{{ region }}/{{ ct.slug }}/" class="neighborhood-card">
-            <h3>{{ ct.label }}</h3>
-            <p>{{ ct.count }} location{{ 's' if ct.count != 1 else '' }}</p>
-        </a>
+        <a href="/{{ region }}/{{ ct.slug }}/" class="cuisine-inline-link">{{ ct.label }} ({{ ct.count }})</a>{% if not loop.last %}<span class="cuisine-inline-sep">·</span>{% endif %}
         {% endfor %}
     </div>
     {% endif %}
@@ -87,7 +82,7 @@
     </div>
     <div class="neighborhood-grid neighborhood-grid--featured">
         {% for nbhd in top_cities %}
-        <a href="/{{ region }}/{{ nbhd.city_slug }}/" class="neighborhood-card neighborhood-card--featured">
+        <a href="/{{ region }}/{{ nbhd.city_slug }}/" class="neighborhood-card neighborhood-card--top-city">
             <h3>{{ nbhd.city or 'Unknown' }}</h3>
             <p>{{ nbhd.count }} restaurant{{ 's' if nbhd.count != 1 else '' }}</p>
         </a>
@@ -95,13 +90,16 @@
     </div>
     {% endif %}
 
-    {% if neighborhoods %}
-    <div class="section-header">
-        <h2>All Cities &amp; Neighborhoods</h2>
-    </div>
-    <input type="checkbox" id="cities-toggle" class="mobile-cities-toggle">
-    <label for="cities-toggle" class="mobile-cities-label">Show all cities</label>
-    <div class="mobile-cities-content">
+    {% if neighborhoods|length > top_cities|length %}
+    <input type="checkbox" id="cities-toggle" class="all-cities-toggle">
+    <label for="cities-toggle" class="all-cities-label">
+        <span class="all-cities-show">Show all {{ neighborhoods|length }} cities →</span>
+        <span class="all-cities-hide">Hide cities ↑</span>
+    </label>
+    <div class="all-cities-content">
+        <div class="section-header" style="margin-top: 0;">
+            <h2>All Cities &amp; Neighborhoods</h2>
+        </div>
         <div class="neighborhood-grid">
             {% for nbhd in neighborhoods %}
             <a href="/{{ region }}/{{ nbhd.city_slug }}/" class="neighborhood-card">
@@ -113,27 +111,9 @@
     </div>
     {% endif %}
 
-    {% if top_restaurants %}
-    <div class="section-header">
-        <h2>Top Scoring Locations</h2>
-    </div>
-    <div class="feed-list" style="margin-bottom: 32px;">
-        {% for r, insp in top_restaurants %}
-        <a href="/{{ r.region }}/{{ r.slug }}/" class="feed-item">
-            <div class="feed-name">{{ r.display_name }}</div>
-            <div class="feed-meta">{{ r.city }}, {{ r.state }}</div>
-            <div class="feed-score"
-                {% if insp.score_tier %}style="color: var(--tier-{{ insp.score_tier }})"{% endif %}>
-                {% if insp.score is not none %}{{ insp.score }}{% else %}—{% endif %}
-            </div>
-        </a>
-        {% endfor %}
-    </div>
-    {% endif %}
-
     {% if bottom_restaurants %}
     <div class="section-header">
-        <h2>Lowest Scoring Locations</h2>
+        <h2>Lowest Scoring Restaurants</h2>
     </div>
     <div class="feed-list" style="margin-bottom: 32px;">
         {% for r, insp in bottom_restaurants %}

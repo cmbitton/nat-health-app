@@ -48,9 +48,10 @@ def build_prompt(restaurant, inspections):
     latest = inspections[0] if inspections else None
     total = len(inspections)
 
+    location = f"{restaurant.city}, {restaurant.state}" if restaurant.city else restaurant.state
     lines = [
         f"Facility: {restaurant.name}",
-        f"Location: {restaurant.city}, {restaurant.state}",
+        f"Location: {location}",
     ]
     if restaurant.cuisine_type:
         lines.append(f"Type: {restaurant.cuisine_type}")
@@ -71,9 +72,9 @@ def build_prompt(restaurant, inspections):
             major = sum(1 for v in violations if v.severity == 'major')
             minor = sum(1 for v in violations if v.severity == 'minor')
             parts = []
-            if crit:  parts.append(f"{crit} priority violation{'s' if crit > 1 else ''}")
-            if major: parts.append(f"{major} priority foundation violation{'s' if major > 1 else ''}")
-            if minor: parts.append(f"{minor} core violation{'s' if minor > 1 else ''}")
+            if crit:  parts.append(f"{crit} critical violation{'s' if crit > 1 else ''}")
+            if major: parts.append(f"{major} major violation{'s' if major > 1 else ''}")
+            if minor: parts.append(f"{minor} minor violation{'s' if minor > 1 else ''}")
             lines.append(f"Violations in latest inspection: {', '.join(parts)}")
 
             # Include up to 3 violation descriptions for context
