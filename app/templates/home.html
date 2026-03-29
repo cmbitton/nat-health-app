@@ -81,70 +81,16 @@
     </div>
     {% endif %}
 
-    {% if worst_scores %}
-    <div class="section-header worst-header">
-        <h2>Worst in {{ worst_region | region_display }} <span class="section-sub">last 30 days</span></h2>
-        <div class="region-pills" data-feed="{{ feed }}">
-            {% for r in supported_regions %}
-            <a href="/?worst={{ r.slug }}{% if feed != 'restaurants' %}&feed={{ feed }}{% endif %}"
-               class="region-pill{% if r.slug == worst_region %} active{% endif %}"
-               data-region="{{ r.slug }}">{{ r.display }}</a>
-            {% endfor %}
-        </div>
+    {% if lowest_scores %}
+    <div class="section-header">
+        <h2>Lowest Scores This Month <span class="section-sub">last 30 days</span></h2>
     </div>
-    <div class="rl-list rl-list--warning" id="worst-list">
-        {% for inspection, restaurant in worst_scores %}
+    <div class="rl-list rl-list--warning">
+        {% for inspection, restaurant in lowest_scores %}
             {{ render_restaurant_row(restaurant, inspection=inspection) }}
         {% endfor %}
     </div>
     {% endif %}
 
 </div>
-{% endblock %}
-
-{% block scripts %}
-<script>
-(function () {
-    var pills = document.querySelectorAll('.region-pill');
-    if (!pills.length) return;
-
-    var heading  = document.querySelector('.worst-header h2');
-    var list     = document.getElementById('worst-list');
-    var pillsBar = document.querySelector('.region-pills');
-
-    pills.forEach(function (pill) {
-        pill.addEventListener('click', function (e) {
-            e.preventDefault();
-            var region  = pill.dataset.region;
-            var display = pill.textContent.trim();
-
-            // Optimistic UI
-            pills.forEach(function (p) { p.classList.remove('active'); });
-            pill.classList.add('active');
-            if (heading) heading.textContent = 'Worst in ' + display;
-            if (list) list.style.opacity = '0.4';
-
-            fetch('/api/worst/' + region)
-                .then(function (r) { return r.text(); })
-                .then(function (html) {
-                    if (list) { list.innerHTML = html; list.style.opacity = '1'; }
-                    // Update pill hrefs so a hard reload preserves the selection
-                    var feed = pillsBar ? (pillsBar.dataset.feed || 'restaurants') : 'restaurants';
-                    pills.forEach(function (p) {
-                        var feedPart = (feed !== 'restaurants') ? ('&feed=' + feed) : '';
-                        p.href = '/?worst=' + p.dataset.region + feedPart;
-                    });
-                    // Push state so back button works
-                    var feedPart = '';
-                    var feed2 = pillsBar ? pillsBar.dataset.feed : 'restaurants';
-                    if (feed2 && feed2 !== 'restaurants') feedPart = '&feed=' + feed2;
-                    history.replaceState(null, '', '/?worst=' + region + feedPart);
-                })
-                .catch(function () {
-                    if (list) list.style.opacity = '1';
-                });
-        });
-    });
-}());
-</script>
 {% endblock %}

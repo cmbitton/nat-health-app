@@ -1,6 +1,3 @@
-import json
-import threading
-import urllib.request
 from datetime import date, timedelta
 
 from flask import Blueprint, render_template, request, current_app
@@ -13,50 +10,6 @@ home_bp = Blueprint('home', __name__)
 
 _NON_RESTAURANT_TYPES = {'School / Childcare', 'Healthcare Facility', 'Grocery / Market', 'Catering'}
 
-SUPPORTED_REGIONS = [
-    {'slug': 'nyc',          'display': 'NYC'},
-    {'slug': 'rhode-island', 'display': 'Rhode Island'},
-]
-_SUPPORTED_SLUGS  = {r['slug'] for r in SUPPORTED_REGIONS}
-_DEFAULT_REGION   = 'nyc'
-
-# ip-api.com regionName → our region slug
-_GEO_REGION_MAP = {
-    'New York':     'nyc',
-    'Rhode Island': 'rhode-island',
-}
-
-
-def _client_ip():
-    xff = request.headers.get('X-Forwarded-For', '')
-    return xff.split(',')[0].strip() if xff else (request.remote_addr or '')
-
-
-def _geolocate_bg(ip, cache_key):
-    """Background thread: fetch geo for ip and warm the cache. Never blocks a request."""
-    try:
-        url = f'http://ip-api.com/json/{ip}?fields=regionName'
-        with urllib.request.urlopen(url, timeout=3) as resp:
-            data = json.loads(resp.read())
-        result = _GEO_REGION_MAP.get(data.get('regionName', ''), _DEFAULT_REGION)
-    except Exception:
-        result = _DEFAULT_REGION
-    cache.set(cache_key, result, timeout=3600)
-
-
-def _geolocate(ip):
-    """Return a supported region slug for the given IP. Cached 1 h per IP.
-    On cache miss, fires a background lookup and returns the default immediately
-    so the page is never blocked waiting on the external API."""
-    if not ip or ip.startswith(('127.', '10.', '192.168.', '::1')):
-        return _DEFAULT_REGION
-    cache_key = f'geo_{ip}'
-    hit = cache.get(cache_key)
-    if hit is not None:
-        return hit
-    threading.Thread(target=_geolocate_bg, args=(ip, cache_key), daemon=True).start()
-    return _DEFAULT_REGION
-
 
 def _recent_inspections(limit=10, restaurants_only=False):
     q = db.session.query(Inspection, Restaurant).join(Restaurant)
@@ -68,9 +21,9 @@ def _recent_inspections(limit=10, restaurants_only=False):
     return q.order_by(Inspection.inspection_date.desc()).limit(limit).all()
 
 
-def _worst_in_region(region, limit=10):
-    """Lowest-scoring restaurants whose most recent inspection was in the past 30 days."""
-    cache_key = f'worst_region_{region}'
+def _lowest_scores(limit=10):
+    """Bottom scores across all regions whose most recent inspection was in the past 30 days."""
+    cache_key = 'lowest_scores_month'
     hit = cache.get(cache_key)
     if hit is not None:
         return hit
@@ -92,7 +45,6 @@ def _worst_in_region(region, limit=10):
             latest_sq.c.max_date == Inspection.inspection_date,
         ))
         .filter(
-            Restaurant.region == region,
             Inspection.inspection_date >= cutoff,
             Inspection.score.isnot(None),
         )
@@ -104,27 +56,10 @@ def _worst_in_region(region, limit=10):
     return rows
 
 
-@home_bp.route('/api/worst/<region>')
-def api_worst(region):
-    """Returns rendered rows for the worst-in-region list (used by the pill AJAX)."""
-    if region not in _SUPPORTED_SLUGS:
-        return '', 404
-    rows = _worst_in_region(region)
-    return render_template('components/_worst_rows.html', rows=rows)
-
-
 @home_bp.route('/')
 def index():
     q    = request.args.get('q', '').strip()
     feed = request.args.get('feed', 'restaurants')
-
-    # Resolve which region's worst list to show:
-    # 1. Explicit ?worst= param  2. Geolocation  3. Default
-    worst_param = request.args.get('worst', '').strip().lower()
-    if worst_param in _SUPPORTED_SLUGS:
-        worst_region = worst_param
-    else:
-        worst_region = _geolocate(_client_ip())
 
     if q:
         search_results = Restaurant.query.filter(
@@ -141,15 +76,12 @@ def index():
             search_results=search_results,
             regions=[],
             recent_inspections=[],
-            worst_scores=[],
-            worst_region=worst_region,
-            supported_regions=SUPPORTED_REGIONS,
+            lowest_scores=[],
             total_restaurants=0,
             total_inspections=0,
             feed=feed,
         )
 
-    # Cache the region list and recently-inspected (not worst — that's per-region cached separately)
     cache_key = f'home_page_data_{feed}'
     cached = cache.get(cache_key)
     if cached:
@@ -179,7 +111,7 @@ def index():
             regions, recent_inspections, total_restaurants, total_inspections
         ), timeout=300)
 
-    worst_scores = _worst_in_region(worst_region)
+    lowest_scores = _lowest_scores()
 
     return render_template(
         'home.html',
@@ -190,9 +122,7 @@ def index():
         search_results=None,
         regions=regions,
         recent_inspections=recent_inspections,
-        worst_scores=worst_scores,
-        worst_region=worst_region,
-        supported_regions=SUPPORTED_REGIONS,
+        lowest_scores=lowest_scores,
         total_restaurants=total_restaurants,
         total_inspections=total_inspections,
         feed=feed,

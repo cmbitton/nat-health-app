@@ -1082,38 +1082,6 @@ nav {
 }
 .feed-toggle-btn:hover:not(.active) { background: var(--bg); }
 
-/* WORST-IN SECTION */
-.worst-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: 10px;
-    margin-top: 28px;
-}
-.region-pills {
-    display: flex;
-    gap: 6px;
-    flex-wrap: wrap;
-}
-.region-pill {
-    padding: 5px 12px;
-    border-radius: 20px;
-    font-size: 12px;
-    font-weight: 600;
-    text-decoration: none;
-    border: 1px solid var(--border);
-    color: var(--text-secondary);
-    background: var(--surface);
-    transition: border-color 0.15s, color 0.15s, background 0.15s;
-    cursor: pointer;
-}
-.region-pill:hover { border-color: var(--accent); color: var(--accent); }
-.region-pill.active {
-    background: var(--accent);
-    border-color: var(--accent);
-    color: #fff;
-}
 
 /* FEED CITY LINK (inline city link in meta) */
 .feed-city-link {
