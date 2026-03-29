@@ -327,6 +327,10 @@ def main():
                 if fac_date and (not db_latest or fac_date > db_latest):
                     n = import_inspections(restaurant.id, source_id, since_date=db_latest)
                     if n:
+                        new_latest = db.session.query(func.max(Inspection.inspection_date)).filter(
+                            Inspection.restaurant_id == restaurant.id
+                        ).scalar()
+                        restaurant.latest_inspection_date = new_latest
                         db.session.commit()
                         insp_added += n
                         updated    += 1
@@ -361,6 +365,10 @@ def main():
                 db.session.flush()
 
                 n = import_inspections(restaurant.id, source_id)
+                new_latest = db.session.query(func.max(Inspection.inspection_date)).filter(
+                    Inspection.restaurant_id == restaurant.id
+                ).scalar()
+                restaurant.latest_inspection_date = new_latest
                 db.session.commit()
                 existing[source_id] = restaurant
                 insp_added   += n

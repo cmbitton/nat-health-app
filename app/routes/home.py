@@ -1,7 +1,7 @@
 from datetime import date, timedelta
 
 from flask import Blueprint, render_template, request, current_app
-from sqlalchemy import func, and_
+from sqlalchemy import func
 from app.db import db, cache
 from app.models.restaurant import Restaurant
 from app.models.inspection import Inspection
@@ -29,22 +29,11 @@ def _lowest_scores(limit=10):
         return hit
 
     cutoff = date.today() - timedelta(days=30)
-    latest_sq = (
-        db.session.query(
-            Inspection.restaurant_id,
-            func.max(Inspection.inspection_date).label('max_date'),
-        )
-        .group_by(Inspection.restaurant_id)
-        .subquery()
-    )
     rows = (
         db.session.query(Inspection, Restaurant)
-        .join(Restaurant)
-        .join(latest_sq, and_(
-            latest_sq.c.restaurant_id == Inspection.restaurant_id,
-            latest_sq.c.max_date == Inspection.inspection_date,
-        ))
+        .join(Restaurant, Restaurant.id == Inspection.restaurant_id)
         .filter(
+            Inspection.inspection_date == Restaurant.latest_inspection_date,
             Inspection.inspection_date >= cutoff,
             Inspection.score.isnot(None),
         )

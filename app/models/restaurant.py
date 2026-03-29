@@ -61,6 +61,7 @@ class Restaurant(db.Model):
     cuisine_type = db.Column(db.String(100))
     license_type = db.Column(db.String(200))
     region = db.Column(db.String(100), nullable=False)
+    latest_inspection_date = db.Column(db.Date, nullable=True)  # denormalized; updated on every import
     ai_summary = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, server_default=db.func.now())
     updated_at = db.Column(db.DateTime, server_default=db.func.now(), onupdate=db.func.now())
@@ -73,6 +74,7 @@ class Restaurant(db.Model):
         db.Index('ix_restaurants_region_city', 'region', 'city'),
         db.Index('ix_restaurants_region_state', 'region', 'state'),
         db.Index('ix_restaurants_region_state_city', 'region', 'state', 'city'),
+        db.Index('ix_restaurants_region_latest_date', 'region', 'latest_inspection_date'),
     )
 
     inspections = db.relationship(

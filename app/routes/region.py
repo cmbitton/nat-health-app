@@ -17,18 +17,6 @@ from app.utils import get_region_display
 region_bp = Blueprint('region', __name__)
 
 
-def _latest_inspection_subquery():
-    """Subquery: most recent inspection_date per restaurant."""
-    return (
-        db.session.query(
-            Inspection.restaurant_id,
-            func.max(Inspection.inspection_date).label('max_date')
-        )
-        .group_by(Inspection.restaurant_id)
-        .subquery()
-    )
-
-
 _NON_RESTAURANT_TYPES = frozenset([
     'School / Childcare', 'Healthcare Facility', 'Grocery / Market', 'Catering'
 ])
@@ -36,14 +24,12 @@ _NON_RESTAURANT_TYPES = frozenset([
 
 def _scored_restaurants(region, order='asc', limit=5):
     """(Restaurant, Inspection) tuples sorted by risk_score, restaurants only."""
-    sq = _latest_inspection_subquery()
     col = Inspection.risk_score.asc() if order == 'asc' else Inspection.risk_score.desc()
     return (
         db.session.query(Restaurant, Inspection)
-        .join(Inspection, Restaurant.id == Inspection.restaurant_id)
-        .join(sq, db.and_(
-            sq.c.restaurant_id == Inspection.restaurant_id,
-            sq.c.max_date == Inspection.inspection_date,
+        .join(Inspection, db.and_(
+            Inspection.restaurant_id == Restaurant.id,
+            Inspection.inspection_date == Restaurant.latest_inspection_date,
         ))
         .filter(
             Restaurant.region == region,
@@ -147,15 +133,13 @@ def _cuisine_rows(region, cuisine_type, city_name=None, sort='date', page=1, per
         return hit
 
     t0 = time.monotonic()
-    sq = _latest_inspection_subquery()
     q = (
         db.session.query(Restaurant, Inspection)
-        .join(sq, sq.c.restaurant_id == Restaurant.id)
         .outerjoin(
             Inspection,
             db.and_(
                 Inspection.restaurant_id == Restaurant.id,
-                Inspection.inspection_date == sq.c.max_date,
+                Inspection.inspection_date == Restaurant.latest_inspection_date,
             )
         )
         .filter(
@@ -443,22 +427,18 @@ def region_sub(region, path_slug):
         page = max(1, int(request.args.get('page', 1) or 1))
         per_page = 25
 
-        # Cache count + rows together to avoid running the expensive
-        # GroupAggregate subquery twice (once for .count(), once for .all())
         page_cache_key = f'city_page_{region}_{path_slug}_{sort}_{page}'
         cached_page = cache.get(page_cache_key)
         if cached_page:
             total, rows = cached_page
         else:
-            sq = _latest_inspection_subquery()
             q = (
                 db.session.query(Restaurant, Inspection)
-                .join(sq, sq.c.restaurant_id == Restaurant.id)
                 .outerjoin(
                     Inspection,
                     db.and_(
                         Inspection.restaurant_id == Restaurant.id,
-                        Inspection.inspection_date == sq.c.max_date,
+                        Inspection.inspection_date == Restaurant.latest_inspection_date,
                     )
                 )
                 .filter(Restaurant.region == region, Restaurant.city == city_name)

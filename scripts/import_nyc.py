@@ -389,6 +389,7 @@ def write_to_db(restaurants, inspections, app, db, Restaurant, Inspection, Viola
 
             # Write inspections for this camis
             db_latest = latest_dates.get(str(restaurant.id))
+            new_latest = restaurant.latest_inspection_date
             for (icamis, idate), idata in inspections.items():
                 if icamis != camis:
                     continue
@@ -417,6 +418,9 @@ def write_to_db(restaurants, inspections, app, db, Restaurant, Inspection, Viola
                 db.session.flush()
                 new_i += 1
 
+                if new_latest is None or idate > new_latest:
+                    new_latest = idate
+
                 for v in idata['violations']:
                     db.session.add(Violation(
                         inspection_id     = insp.id,
@@ -425,6 +429,8 @@ def write_to_db(restaurants, inspections, app, db, Restaurant, Inspection, Viola
                         severity          = v['severity'],
                         corrected_on_site = False,
                     ))
+
+            restaurant.latest_inspection_date = new_latest
 
             # Commit every 500 restaurants to avoid huge transactions
             if new_r % 500 == 0 and new_r > 0:
