@@ -731,6 +731,13 @@ nav {
     .nearby-grid { grid-template-columns: 1fr; }
     .restaurant-info h1 { font-size: 22px; }
     .hero h1 { font-size: 28px; }
+    .hero { padding: 32px 16px 24px; }
+    .hero p { font-size: 15px; margin-bottom: 20px; }
+    .hero-stats { gap: 16px; margin-top: 16px; flex-wrap: nowrap; }
+    .hero-stat { font-size: 12px; }
+    .section-header { margin-bottom: 10px; }
+    .section-header h2 { font-size: 17px; }
+    #regions { margin-top: 0; }
     .neighborhood-grid { grid-template-columns: 1fr; }
     .leaderboard-header {
         grid-template-columns: 36px 1fr 56px;
@@ -763,7 +770,7 @@ nav {
         align-items: center;
     }
     .region-card h3 { font-size: 16px; margin-bottom: 2px; }
-    #regions { margin-bottom: 4px; }
+    #regions { margin-bottom: 4px; margin-top: 0; }
 }
 
 /* ===================== MOBILE: BROWSE BY TYPE — HORIZONTAL SCROLL ===================== */

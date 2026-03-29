@@ -11,49 +11,18 @@ jobs:
     timeout-minutes: 90
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-          cache: 'pip'
-
       - name: Install flyctl
         uses: superfly/flyctl-actions/setup-flyctl@master
-
-      - name: Install dependencies
-        run: pip install -r requirements.txt
-
-      # ── RI: update locations.json in the runner, commit it back ───────────
-      # refresh.py geocodes new locations (needs Google Maps key) and writes
-      # data/locations.json. The updated file is committed so the next deploy
-      # picks up any new RI locations.
-      - name: RI — Refresh locations.json
-        env:
-          GOOGLE_MAPS_KEY: ${{ secrets.GOOGLE_MAPS_KEY }}
-        run: python3 scripts/refresh.py
-
-      - name: RI — Commit updated locations.json
-        run: |
-          git config user.name  "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/locations.json
-          if git diff --staged --quiet; then
-            echo "No changes to locations.json — skipping commit."
-          else
-            git commit -m "chore: daily locations.json refresh [skip ci]"
-            git push
-          fi
 
       # ── Run DB scripts inside the Fly container ────────────────────────────
       # DATABASE_URL, SECRET_KEY, and GEMINI_API_KEY are already set as Fly
       # secrets and are available inside the container automatically.
-      - name: RI — Sync database
+      # sync_db.py now queries the RI API directly for recent inspections —
+      # no locations.json or Python install needed in the runner.
+      - name: RI — Sync database (last 5 days)
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-        run: flyctl ssh console -a forkgrade -C "python3 scripts/sync_db.py"
+        run: flyctl ssh console -a forkgrade -C "python3 scripts/sync_db.py --days=5"
 
       - name: NYC — Daily import (last 3 days)
         env:

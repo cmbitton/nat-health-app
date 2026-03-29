@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
 """
-Incremental DB sync — run after refresh.py has updated data/locations.json.
-
-For each location in locations.json:
-  - New location (not in DB): create restaurant + import full inspection history
-  - Updated location (new inspection date): fetch latest inspections from API, add to DB
-  - Unchanged: skip
+Incremental DB sync — queries the RI API for recently inspected facilities
+and syncs only those to the database. Replaces the old approach of iterating
+all 6,716 locations from locations.json every run.
 
 Usage:
-    nat-health/bin/python3 scripts/sync_db.py
+    python3 scripts/sync_db.py            # sync last 5 days (default)
+    python3 scripts/sync_db.py --days=3   # sync last N days
 
 No Google Maps key needed — only hits the RI inspections API.
 """
@@ -22,7 +20,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -33,18 +31,14 @@ from app.models.restaurant import Restaurant
 from app.models.inspection import Inspection
 from app.models.violation import Violation
 
-DATA_DIR       = Path(__file__).parent.parent / "data"
-LOCATIONS_FILE = DATA_DIR / "locations.json"
-
 INSPECTIONS_URL = "https://ri.healthinspections.us/ri/API/index.cfm/inspectionsData/{}"
+SEARCH_URL      = "https://ri.healthinspections.us/ri/API/index.cfm/search/{}/{}"
 HTML_BASE       = "https://ri.healthinspections.us/"
 API_HEADERS     = {"Accept": "application/json", "User-Agent": "Mozilla/5.0",
                    "Referer": "https://ri.healthinspections.us/"}
 
 PRIORITY_ITEMS            = {4, 6, 8, 9, 11, 12, 13, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 26, 27, 28}
 PRIORITY_FOUNDATION_ITEMS = {1, 3, 5, 10, 14, 25, 29}
-
-# ── Re-used helpers (mirrors import_ri.py / fetch_history.py) ─────────────────
 
 RI_MUNICIPALITIES = [
     "Barrington", "Bristol", "Burrillville", "Central Falls", "Charlestown",
@@ -71,7 +65,14 @@ CATEGORY_LABEL_MAP = {
 }
 
 
-def encode_id(s): return base64.b64encode(str(s).encode()).decode()
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def encode_id(s):
+    return base64.b64encode(str(s).encode()).decode()
+
+def decode_id(b64_str):
+    padded = b64_str + "=" * (-len(b64_str) % 4)
+    return base64.b64decode(padded).decode()
 
 def fetch_json(url):
     req = urllib.request.Request(url, headers=API_HEADERS)
@@ -162,12 +163,6 @@ def make_slug(name, city):
     c = re.sub(r'[^a-z0-9-]', '', (city or 'ri').lower().replace(' ', '-').replace("'", ''))
     return s + '-' + c
 
-def facility_type_label(loc):
-    cat = loc.get("google_category", "other")
-    if cat == "restaurant":
-        return CUISINE_MAP.get(loc.get("cuisine", ""))
-    return CATEGORY_LABEL_MAP.get(cat)
-
 def unique_slug(base, seen):
     slug, n = base, 2
     while slug in seen:
@@ -176,45 +171,85 @@ def unique_slug(base, seen):
     return slug
 
 
+# ── RI API: date-range search ─────────────────────────────────────────────────
+
+def search_by_date(from_str, to_str, page):
+    """One page of facilities inspected within [from_str, to_str] (MM/DD/YYYY)."""
+    json_obj = {
+        "keyword": base64.b64encode(b"").decode(),
+        "from":    base64.b64encode(from_str.encode()).decode(),
+        "to":      base64.b64encode(to_str.encode()).decode(),
+    }
+    json_str = json.dumps(json_obj).replace("/", "%2F")
+    url = SEARCH_URL.format(urllib.parse.quote(json_str), page)
+    return fetch_json(url)
+
+def fetch_recent_facilities(days):
+    """Return all facilities inspected in the last N days from the RI API."""
+    today     = date.today()
+    from_date = today - timedelta(days=days)
+    from_str  = from_date.strftime("%m/%d/%Y")
+    to_str    = today.strftime("%m/%d/%Y")
+    print(f"Querying RI API for inspections {from_str} – {to_str}...")
+
+    facilities = []
+    page = 0
+    while True:
+        try:
+            batch = search_by_date(from_str, to_str, page)
+        except Exception as e:
+            print(f"  Error at page {page}: {e}")
+            break
+        if not batch:
+            break
+        for item in batch:
+            facilities.append({
+                "id":              decode_id(item["id"]),
+                "name":            item.get("name", ""),
+                "address":         item.get("mapAddress", ""),
+                "last_inspection": item.get("columns", {}).get("1", "")
+                                       .replace("Last Inspection Date:", "").strip(),
+                "license_type":    item.get("columns", {}).get("2", "")
+                                       .replace("License Type: ", "").strip(),
+            })
+        page += 1
+        time.sleep(0.3)
+
+    print(f"  Found {len(facilities)} recently inspected facilities.\n")
+    return facilities
+
+
 # ── Core sync logic ───────────────────────────────────────────────────────────
 
-def import_inspections(restaurant_id, source_id, since_date=None, fetch_codes=False):
-    """
-    Fetch all inspections for source_id from the RI API and insert any
-    that are newer than since_date (or all of them if since_date is None).
-    Returns number of inspections added.
-    """
+def import_inspections(restaurant_id, source_id, since_date=None):
+    """Fetch inspections for source_id and insert any newer than since_date."""
     data = fetch_json(INSPECTIONS_URL.format(encode_id(source_id)))
     if not data:
         return 0
 
     added = 0
     for insp_data in data:
-        raw_date = insp_data.get("columns", {}).get("0", "")
+        raw_date  = insp_data.get("columns", {}).get("0", "")
         insp_date = parse_date(raw_date.replace("Inspection Date:", "").strip())
         if not insp_date:
             continue
         if since_date and insp_date <= since_date:
-            continue  # already have this or older
+            continue
 
-        # Check not already in DB (duplicate guard)
         exists = Inspection.query.filter_by(
             restaurant_id=restaurant_id, inspection_date=insp_date
         ).first()
         if exists:
             continue
 
-        vdict = insp_data.get("violations", {})
-        codes = []
-        if fetch_codes:
-            pp = insp_data.get("printablePath", "")
-            if pp:
-                codes = fetch_html_codes(pp)
-                time.sleep(0.15)
+        pp     = insp_data.get("printablePath", "")
+        codes  = fetch_html_codes(pp) if pp else []
+        if pp:
+            time.sleep(0.15)
 
-        violations = parse_violations(vdict, codes)
-        risk = sum(3 if v["severity"]=="critical" else 2 if v["severity"]=="major" else 1
-                   for v in violations)
+        violations = parse_violations(insp_data.get("violations", {}), codes)
+        risk  = sum(3 if v["severity"]=="critical" else 2 if v["severity"]=="major" else 1
+                    for v in violations)
         score = risk_to_score(risk)
 
         insp = Inspection(
@@ -243,55 +278,53 @@ def import_inspections(restaurant_id, source_id, since_date=None, fetch_codes=Fa
 
 
 def main():
-    if not LOCATIONS_FILE.exists():
-        print(f"ERROR: {LOCATIONS_FILE} not found."); sys.exit(1)
+    days = 5
+    for arg in sys.argv[1:]:
+        if arg.startswith('--days='):
+            days = int(arg.split('=', 1)[1])
 
-    locations = json.loads(LOCATIONS_FILE.read_text())
-    print(f"Loaded {len(locations)} locations\n")
+    facilities = fetch_recent_facilities(days)
+    if not facilities:
+        print("No recently inspected facilities found.")
+        return
 
     app = create_app()
     with app.app_context():
         db.create_all()
 
-        # Load existing source_id → (restaurant_id, latest_date) map in one query
         existing = {
             str(r.source_id): r
             for r in Restaurant.query.filter_by(region="rhode-island")
                                      .filter(Restaurant.source_id.isnot(None))
                                      .all()
         }
-        # Pre-load latest inspection date per restaurant
         from sqlalchemy import func
         latest_dates = {
-            str(restaurant_id): max_date
-            for restaurant_id, max_date in
+            str(rid): max_date
+            for rid, max_date in
             db.session.query(Inspection.restaurant_id, func.max(Inspection.inspection_date))
                       .group_by(Inspection.restaurant_id).all()
         }
-
-        # Track slugs to ensure uniqueness for new locations
         seen_slugs = {r.slug for r in existing.values()}
 
-        new_locations   = 0
-        updated         = 0
-        skipped         = 0
-        insp_added      = 0
+        new_locations = 0
+        updated       = 0
+        skipped       = 0
+        insp_added    = 0
 
-        for i, loc in enumerate(locations, 1):
-            source_id = str(loc.get("id", ""))
-            name      = (loc.get("name") or "").strip()
+        for fac in facilities:
+            source_id = str(fac.get("id", ""))
+            name      = (fac.get("name") or "").strip()
             if not name or not source_id:
                 skipped += 1
                 continue
 
-            loc_last_date = parse_date(loc.get("last_inspection"))
-
             if source_id in existing:
-                restaurant    = existing[source_id]
-                db_latest     = latest_dates.get(str(restaurant.id))
+                restaurant = existing[source_id]
+                db_latest  = latest_dates.get(str(restaurant.id))
+                fac_date   = parse_date(fac.get("last_inspection"))
 
-                if loc_last_date and (not db_latest or loc_last_date > db_latest):
-                    # New inspection available
+                if fac_date and (not db_latest or fac_date > db_latest):
                     n = import_inspections(restaurant.id, source_id, since_date=db_latest)
                     if n:
                         db.session.commit()
@@ -303,8 +336,11 @@ def main():
                 else:
                     skipped += 1
             else:
-                # Brand-new location
-                street, city, state, zip5 = parse_address(loc.get("address", ""))
+                # New location — create restaurant from API data (no geocoding here;
+                # refresh.py will enrich lat/lng and cuisine on next run)
+                street, city, state, zip5 = parse_address(fac.get("address", ""))
+                if not city or city in ('0', 'Unknown'):
+                    city = None
                 slug = unique_slug(make_slug(name, city), seen_slugs)
 
                 restaurant = Restaurant(
@@ -315,10 +351,10 @@ def main():
                     city         = city,
                     state        = state,
                     zip          = zip5,
-                    latitude     = loc.get("lat"),
-                    longitude    = loc.get("lng"),
-                    cuisine_type = facility_type_label(loc),
-                    license_type = loc.get("license_type"),
+                    latitude     = None,
+                    longitude    = None,
+                    cuisine_type = None,
+                    license_type = fac.get("license_type") or None,
                     region       = "rhode-island",
                 )
                 db.session.add(restaurant)
@@ -326,21 +362,19 @@ def main():
 
                 n = import_inspections(restaurant.id, source_id)
                 db.session.commit()
+                existing[source_id] = restaurant
                 insp_added   += n
                 new_locations += 1
                 print(f"  New: {name} ({city}) — {n} inspections")
 
             time.sleep(0.3)
 
-            if i % 200 == 0:
-                print(f"  [{i}/{len(locations)}] {new_locations} new, {updated} updated, {skipped} skipped")
-
         db.session.commit()
         print(f"\nSync complete:")
         print(f"  {new_locations} new locations")
-        print(f"  {updated} updated locations")
+        print(f"  {updated} updated")
         print(f"  {insp_added} new inspections added")
-        print(f"  {skipped} unchanged (skipped)")
+        print(f"  {skipped} skipped (already up to date)")
 
 
 if __name__ == "__main__":
