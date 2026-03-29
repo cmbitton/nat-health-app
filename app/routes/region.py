@@ -71,7 +71,12 @@ def _home_state(region: str) -> str | None:
     """Return the most common restaurant.state for this region (its native state).
 
     Used to exclude out-of-state vendors from the city/neighborhood pages.
+    Cached 1 h — the home state for a region never changes in practice.
     """
+    cache_key = f'home_state_{region}'
+    hit = cache.get(cache_key)
+    if hit is not None:
+        return hit
     row = (
         db.session.query(Restaurant.state, func.count(Restaurant.id))
         .filter(Restaurant.region == region, Restaurant.state.isnot(None))
@@ -79,7 +84,23 @@ def _home_state(region: str) -> str | None:
         .order_by(func.count(Restaurant.id).desc())
         .first()
     )
-    return row[0] if row else None
+    result = row[0] if row else None
+    cache.set(cache_key, result, timeout=3600)
+    return result
+
+
+def _city_list(region: str, home_state: str | None) -> list:
+    """Distinct city names for a region, filtered to home state. Cached 1 h."""
+    cache_key = f'city_list_{region}'
+    hit = cache.get(cache_key)
+    if hit is not None:
+        return hit
+    q = db.session.query(Restaurant.city).filter(Restaurant.region == region)
+    if home_state:
+        q = q.filter(Restaurant.state == home_state)
+    result = q.distinct().all()
+    cache.set(cache_key, result, timeout=3600)
+    return result
 
 
 def _get_cuisine_types(region):
@@ -380,10 +401,7 @@ def region_sub(region, path_slug):
 
     # 2. Try city slug — only match cities in the region's home state
     home_state = _home_state(region)
-    city_q = db.session.query(Restaurant.city).filter(Restaurant.region == region)
-    if home_state:
-        city_q = city_q.filter(Restaurant.state == home_state)
-    cities = city_q.distinct().all()
+    cities = _city_list(region, home_state)
     city_name = next(
         (c[0] for c in cities if c[0] and _city_slug(c[0]) == path_slug),
         None
@@ -392,33 +410,43 @@ def region_sub(region, path_slug):
         sort = request.args.get('sort', 'date')
         page = max(1, int(request.args.get('page', 1) or 1))
         per_page = 25
-        sq = _latest_inspection_subquery()
-        q = (
-            db.session.query(Restaurant, Inspection)
-            .join(sq, sq.c.restaurant_id == Restaurant.id)
-            .outerjoin(
-                Inspection,
-                db.and_(
-                    Inspection.restaurant_id == Restaurant.id,
-                    Inspection.inspection_date == sq.c.max_date,
+
+        # Cache count + rows together to avoid running the expensive
+        # GroupAggregate subquery twice (once for .count(), once for .all())
+        page_cache_key = f'city_page_{region}_{path_slug}_{sort}_{page}'
+        cached_page = cache.get(page_cache_key)
+        if cached_page:
+            total, rows = cached_page
+        else:
+            sq = _latest_inspection_subquery()
+            q = (
+                db.session.query(Restaurant, Inspection)
+                .join(sq, sq.c.restaurant_id == Restaurant.id)
+                .outerjoin(
+                    Inspection,
+                    db.and_(
+                        Inspection.restaurant_id == Restaurant.id,
+                        Inspection.inspection_date == sq.c.max_date,
+                    )
                 )
+                .filter(Restaurant.region == region, Restaurant.city == city_name)
             )
-            .filter(Restaurant.region == region, Restaurant.city == city_name)
-        )
-        if sort == 'score':
-            q = q.order_by(
-                db.case((Inspection.risk_score.is_(None), 1), else_=0),
-                Inspection.risk_score.asc(),
-            )
-        elif sort == 'name':
-            q = q.order_by(Restaurant.name.asc())
-        else:  # date (default)
-            q = q.order_by(
-                db.case((Inspection.inspection_date.is_(None), 1), else_=0),
-                Inspection.inspection_date.desc(),
-            )
-        total = q.count()
-        rows = q.offset((page - 1) * per_page).limit(per_page).all()
+            if sort == 'score':
+                q = q.order_by(
+                    db.case((Inspection.risk_score.is_(None), 1), else_=0),
+                    Inspection.risk_score.asc(),
+                )
+            elif sort == 'name':
+                q = q.order_by(Restaurant.name.asc())
+            else:  # date (default)
+                q = q.order_by(
+                    db.case((Inspection.inspection_date.is_(None), 1), else_=0),
+                    Inspection.inspection_date.desc(),
+                )
+            total = q.count()
+            rows = q.offset((page - 1) * per_page).limit(per_page).all()
+            cache.set(page_cache_key, (total, rows), timeout=300)
+
         return render_neighborhood(region, path_slug, city_name, rows,
                                    sort=sort, page=page, per_page=per_page, total=total)
 
@@ -439,10 +467,7 @@ def region_sub(region, path_slug):
 @region_bp.route('/<region>/<city_slug_str>/<cuisine_slug_str>/')
 def region_city_cuisine(region, city_slug_str, cuisine_slug_str):
     home_state = _home_state(region)
-    city_q = db.session.query(Restaurant.city).filter(Restaurant.region == region)
-    if home_state:
-        city_q = city_q.filter(Restaurant.state == home_state)
-    cities = city_q.distinct().all()
+    cities = _city_list(region, home_state)
     city_name = next(
         (c[0] for c in cities if c[0] and _city_slug(c[0]) == city_slug_str),
         None

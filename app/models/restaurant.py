@@ -71,6 +71,8 @@ class Restaurant(db.Model):
         db.Index('ix_restaurants_city', 'city'),
         db.Index('ix_restaurants_cuisine_type', 'cuisine_type'),
         db.Index('ix_restaurants_region_city', 'region', 'city'),
+        db.Index('ix_restaurants_region_state', 'region', 'state'),
+        db.Index('ix_restaurants_region_state_city', 'region', 'state', 'city'),
     )
 
     inspections = db.relationship(
