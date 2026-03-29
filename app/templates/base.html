@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ title }}</title>
     <meta name="description" content="{{ description }}">
+    {% if request.args.get('page', '1') != '1' %}
+    <meta name="robots" content="noindex, follow">
+    {% endif %}
     <link rel="canonical" href="{{ canonical_url }}">
     <meta property="og:site_name" content="ForkGrade">
     <meta property="og:title" content="{{ title }}">

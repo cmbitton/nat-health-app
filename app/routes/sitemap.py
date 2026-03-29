@@ -198,6 +198,11 @@ def robots_txt():
     content = f"""User-agent: *
 Allow: /
 
+# Disallow paginated and sorted variants — canonical is page 1 with default sort
+Disallow: /*?page=
+Disallow: /*?sort=
+Disallow: /*?feed=
+
 Sitemap: {base_url}/sitemap.xml
 """
     return Response(content, mimetype='text/plain')

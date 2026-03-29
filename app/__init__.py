@@ -2,6 +2,8 @@ import logging
 import time
 
 from flask import Flask, g, has_request_context, render_template, request
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from sqlalchemy import event
 from sqlalchemy.engine import Engine
 from dotenv import load_dotenv
@@ -38,6 +40,18 @@ def create_app():
     from app.db import db, cache
     db.init_app(app)
     cache.init_app(app)
+
+    # Rate limiting — 60 req/min per IP, in-memory (single machine)
+    limiter = Limiter(
+        key_func=get_remote_address,
+        storage_uri='memory://',
+        default_limits=['60 per minute'],
+    )
+    limiter.init_app(app)
+
+    @limiter.request_filter
+    def _exempt_static():
+        return request.path.startswith('/static/')
 
     # -- Per-request performance logging --
     @app.before_request
@@ -91,6 +105,15 @@ def create_app():
     app.register_blueprint(sitemap_bp)
 
     # Error handlers
+    @app.errorhandler(429)
+    def rate_limited(e):
+        return render_template(
+            '429.html',
+            title='Too Many Requests | ' + app.config['SITE_NAME'],
+            description='You have sent too many requests. Please wait a moment and try again.',
+            canonical_url=app.config['BASE_URL'] + '/',
+        ), 429
+
     @app.errorhandler(404)
     def not_found(e):
         return render_template(
