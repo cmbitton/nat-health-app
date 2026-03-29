@@ -1,8 +1,12 @@
+import logging
 import re
+import time
 
 from flask import Blueprint, render_template, request, abort, current_app
 from sqlalchemy import func
 from sqlalchemy.orm import selectinload
+
+_log = logging.getLogger('forkgrade.perf')
 
 from app.db import db, cache
 from app.models.restaurant import Restaurant
@@ -138,9 +142,11 @@ def _cuisine_rows(region, cuisine_type, city_name=None, sort='date', page=1, per
     """
     cache_key = f'cuisine_rows_{region}_{cuisine_type}_{city_name or ""}_{sort}_{page}'
     hit = cache.get(cache_key)
+    _log.info('_cuisine_rows cache %s | key=%r', 'HIT' if hit is not None else 'MISS', cache_key)
     if hit is not None:
         return hit
 
+    t0 = time.monotonic()
     sq = _latest_inspection_subquery()
     q = (
         db.session.query(Restaurant, Inspection)
@@ -176,7 +182,9 @@ def _cuisine_rows(region, cuisine_type, city_name=None, sort='date', page=1, per
     total = q.count()
     rows = q.offset((page - 1) * per_page).limit(per_page).all()
     result = (rows, total)
-    cache.set(cache_key, result, timeout=300)
+    stored = cache.set(cache_key, result, timeout=300)
+    _log.info('_cuisine_rows queried in %.0fms, total=%d, cache.set=%s',
+              (time.monotonic() - t0) * 1000, total, stored)
     return result
 
 

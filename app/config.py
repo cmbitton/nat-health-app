@@ -11,8 +11,8 @@ class Config:
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SQLALCHEMY_ENGINE_OPTIONS = {
         'pool_pre_ping': True,   # validate connection before use; handles stale connections
-        'pool_size': 3,          # persistent connections per worker (2 workers × 3 = 6 held open)
-        'max_overflow': 2,       # burst headroom per worker (2 workers × 2 = 4 extra max)
+        'pool_size': 5,          # persistent connections (1 worker × 5 = 5 held open)
+        'max_overflow': 5,       # burst headroom (1 worker, max 10 total)
         'pool_timeout': 10,      # fail fast rather than stall a request for 30s
         'pool_recycle': 1800,    # recycle after 30 min, not 5 — pre_ping handles stale connections
         'connect_args': {'connect_timeout': 5},
