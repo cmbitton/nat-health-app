@@ -211,9 +211,9 @@ def parse_date(s: str) -> date | None:
 def compute_score(violations: list) -> tuple[int, int]:
     """NYC-tuned weighted formula.
     Returns (risk_score, display_score).
-    Critical → weight 3, Not Critical → weight 1.5, decay=0.05.
+    Critical → weight 3, Not Critical → weight 1.0, decay=0.05.
     """
-    risk = sum(3 if v['severity'] == 'critical' else 1.5 for v in violations)
+    risk = sum(3.0 if v['severity'] == 'critical' else 1.0 for v in violations)
     score = round(100 * math.exp(-risk * 0.05))
     return risk, score
 

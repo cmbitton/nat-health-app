@@ -12,7 +12,7 @@ class Inspection(db.Model):
     )
     inspection_date = db.Column(db.Date, nullable=False)
     score = db.Column(db.Integer, nullable=True)       # normalized 0–100 display score
-    risk_score = db.Column(db.Integer, nullable=True)  # raw weighted violation sum
+    risk_score = db.Column(db.Numeric(6, 2), nullable=True)  # raw weighted violation sum
     grade = db.Column(db.String(5), nullable=True)
     result = db.Column(db.String(100))
     inspection_type = db.Column(db.String(100))
