@@ -96,19 +96,23 @@ def _city_list(region: str, home_state: str | None) -> list:
 def _get_cuisine_types(region):
     """Return list of {slug, label, count} dicts for cuisine types in region.
 
-    Types with fewer than 20 locations are excluded to keep Browse by Type clean.
-    Cached 1 h — cuisine type lists change only when new data is imported.
+    Minimum count threshold scales with region size: 200 for regions with
+    >10,000 restaurants, 20 otherwise. Cached 1 h.
     """
     cache_key = f'cuisine_types_{region}'
     hit = cache.get(cache_key)
     if hit is not None:
         return hit
+    region_size = db.session.query(func.count(Restaurant.id)).filter(
+        Restaurant.region == region
+    ).scalar() or 0
+    min_count = 200 if region_size > 10000 else 20
     rows = (
         db.session.query(Restaurant.cuisine_type, func.count(Restaurant.id))
         .join(Inspection, Restaurant.id == Inspection.restaurant_id)
         .filter(Restaurant.region == region, Restaurant.cuisine_type.isnot(None))
         .group_by(Restaurant.cuisine_type)
-        .having(func.count(Restaurant.id) >= 20)
+        .having(func.count(Restaurant.id) >= min_count)
         .all()
     )
     result = [

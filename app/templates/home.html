@@ -87,7 +87,7 @@
     </div>
     <div class="rl-list rl-list--warning">
         {% for inspection, restaurant in lowest_scores %}
-            {{ render_restaurant_row(restaurant, inspection=inspection) }}
+            {{ render_restaurant_row(restaurant, inspection=inspection, show_city=true) }}
         {% endfor %}
     </div>
     {% endif %}

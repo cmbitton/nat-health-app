@@ -21,7 +21,7 @@
       <div class="rl-list rl-list--warning"> ... </div>
 #}
 
-{% macro render_restaurant_row(restaurant, inspection=none, rank=none) %}
+{% macro render_restaurant_row(restaurant, inspection=none, rank=none, show_city=false) %}
 {%- set tier   = (inspection.score_tier if inspection else none) or restaurant.score_tier -%}
 {%- set score  = (inspection.score if inspection else restaurant.latest_score) -%}
 {%- set idate  = inspection.inspection_date if inspection else none -%}
@@ -30,6 +30,9 @@
     <div class="rl-name-col">
         <div class="rl-name">{{ restaurant.display_name }}</div>
         {% if restaurant.address %}<div class="rl-address">{{ restaurant.address }}</div>{% endif %}
+        {% if show_city and restaurant.city %}
+        <div class="rl-city">{{ restaurant.city }}{% if restaurant.region %} &middot; {{ restaurant.region | region_display }}{% endif %}</div>
+        {% endif %}
         <div class="rl-mobile-sub">
             {%- if restaurant.city %}{{ restaurant.city }}{% endif -%}
             {%- if idate %} &middot; {{ idate|format_date }}{% endif -%}

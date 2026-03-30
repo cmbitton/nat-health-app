@@ -749,6 +749,13 @@ nav {
     overflow: hidden;
     text-overflow: ellipsis;
 }
+.rl-city {
+    font-size: 12px;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
 .rl-mobile-sub { display: none; }
 .rl-score {
     font-family: 'DM Mono', monospace;
