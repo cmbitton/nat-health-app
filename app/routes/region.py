@@ -358,7 +358,6 @@ def region_index(region):
         home_state = _home_state(region)
         city_q = (
             db.session.query(Restaurant.city, func.count(Restaurant.id))
-            .join(Inspection, Restaurant.id == Inspection.restaurant_id)
             .filter(
                 Restaurant.region == region,
                 Restaurant.city.isnot(None),
