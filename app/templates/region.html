@@ -111,7 +111,7 @@
     </div>
     <div class="rl-list rl-list--warning" style="margin-bottom: 32px;">
         {% for r, insp in bottom_restaurants %}
-            {{ render_restaurant_row(r, inspection=insp) }}
+            {{ render_restaurant_row(r, inspection=insp, show_city=true, show_region=false) }}
         {% endfor %}
     </div>
     {% endif %}
@@ -122,7 +122,7 @@
     </div>
     <div class="rl-list">
         {% for inspection, restaurant in recent_inspections %}
-            {{ render_restaurant_row(restaurant, inspection=inspection) }}
+            {{ render_restaurant_row(restaurant, inspection=inspection, show_city=true, show_region=false) }}
         {% endfor %}
     </div>
     {% endif %}

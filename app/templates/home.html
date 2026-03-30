@@ -76,7 +76,7 @@
     </div>
     <div class="rl-list">
         {% for inspection, restaurant in recent_inspections %}
-            {{ render_restaurant_row(restaurant, inspection=inspection) }}
+            {{ render_restaurant_row(restaurant, inspection=inspection, show_city=true) }}
         {% endfor %}
     </div>
     {% endif %}
