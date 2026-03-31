@@ -36,12 +36,13 @@
     <div class="city-page-body">
 
         {% if city_cuisine_types %}
+        {% set sorted_types = city_cuisine_types|sort(attribute='label') %}
+        {% set n_visible = 5 %}
+        {% set has_more = sorted_types|length > n_visible %}
         <div class="browse-types-section">
             <div class="cuisine-inline-list">
                 <span class="cuisine-inline-label">Browse by type:</span>
-                {% for ct in city_cuisine_types|sort(attribute='label') %}
-                <a href="/{{ region }}/{{ city_slug }}/{{ ct.slug }}/" class="cuisine-inline-link">{{ ct.label }} ({{ ct.count }})</a>{% if not loop.last %}<span class="cuisine-inline-sep">·</span>{% endif %}
-                {% endfor %}
+                {% for ct in sorted_types %}{% if loop.index <= n_visible %}<a href="/{{ region }}/{{ city_slug }}/{{ ct.slug }}/" class="cuisine-inline-link">{{ ct.label }} ({{ ct.count }})</a>{% if not loop.last and loop.index < n_visible %}<span class="cuisine-inline-sep">·</span>{% endif %}{% endif %}{% endfor %}{% if has_more %}<input type="checkbox" id="cuisine-more" class="cuisine-more-toggle"><span class="cuisine-more-overflow">{% for ct in sorted_types %}{% if loop.index > n_visible %}<span class="cuisine-inline-sep">·</span><a href="/{{ region }}/{{ city_slug }}/{{ ct.slug }}/" class="cuisine-inline-link">{{ ct.label }} ({{ ct.count }})</a>{% endif %}{% endfor %}</span><label for="cuisine-more" class="cuisine-more-label"><span class="cuisine-more-show"><span class="cuisine-inline-sep">·</span>+{{ sorted_types|length - n_visible }} more</span><span class="cuisine-more-hide"><span class="cuisine-inline-sep">·</span>less</span></label>{% endif %}
             </div>
         </div>
         {% endif %}
