@@ -93,11 +93,19 @@ def _city_list(region: str, home_state: str | None) -> list:
     return result
 
 
+def _cuisine_min_count(size):
+    """Minimum cuisine type count threshold based on location count."""
+    if size >= 10000:
+        return 150
+    if size >= 3000:
+        return 50
+    return 20
+
+
 def _get_cuisine_types(region):
     """Return list of {slug, label, count} dicts for cuisine types in region.
 
-    Minimum count threshold scales with region size: 200 for regions with
-    >10,000 restaurants, 20 otherwise. Cached 1 h.
+    Minimum count threshold scales with region size via _cuisine_min_count(). Cached 1 h.
     """
     cache_key = f'cuisine_types_{region}'
     hit = cache.get(cache_key)
@@ -106,7 +114,7 @@ def _get_cuisine_types(region):
     region_size = db.session.query(func.count(Restaurant.id)).filter(
         Restaurant.region == region
     ).scalar() or 0
-    min_count = 200 if region_size > 10000 else 20
+    min_count = _cuisine_min_count(region_size)
     rows = (
         db.session.query(Restaurant.cuisine_type, func.count(Restaurant.id))
         .join(Inspection, Restaurant.id == Inspection.restaurant_id)
@@ -242,12 +250,17 @@ def render_neighborhood(region, city_slug_str, city_name, restaurants_with_score
     ct_cache_key = f'city_cuisine_types_{region}_{city_slug_str}'
     city_cuisine_types = cache.get(ct_cache_key)
     if city_cuisine_types is None:
+        city_size = db.session.query(func.count(Restaurant.id)).filter(
+            Restaurant.region == region, Restaurant.city == city_name
+        ).scalar() or 0
+        min_count = _cuisine_min_count(city_size)
         city_cuisine_rows = (
             db.session.query(Restaurant.cuisine_type, func.count(Restaurant.id))
             .join(Inspection, Restaurant.id == Inspection.restaurant_id)
             .filter(Restaurant.region == region, Restaurant.city == city_name,
                     Restaurant.cuisine_type.isnot(None))
             .group_by(Restaurant.cuisine_type)
+            .having(func.count(Restaurant.id) >= min_count)
             .all()
         )
         city_cuisine_types = [
