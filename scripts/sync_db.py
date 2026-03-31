@@ -331,6 +331,7 @@ def main():
                             Inspection.restaurant_id == restaurant.id
                         ).scalar()
                         restaurant.latest_inspection_date = new_latest
+                        restaurant.ai_summary = None
                         db.session.commit()
                         insp_added += n
                         updated    += 1

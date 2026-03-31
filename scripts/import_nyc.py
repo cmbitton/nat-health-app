@@ -430,6 +430,8 @@ def write_to_db(restaurants, inspections, app, db, Restaurant, Inspection, Viola
                         corrected_on_site = False,
                     ))
 
+            if new_latest != restaurant.latest_inspection_date:
+                restaurant.ai_summary = None
             restaurant.latest_inspection_date = new_latest
 
             # Commit every 500 restaurants to avoid huge transactions
