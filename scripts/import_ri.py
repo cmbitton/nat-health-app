@@ -247,14 +247,24 @@ def decode_id(b64_str):
     padded = b64_str + "=" * (-len(b64_str) % 4)
     return base64.b64decode(padded).decode()
 
-def fetch_json(url):
+def fetch_json(url, retries=3):
     req = urllib.request.Request(url, headers=API_HEADERS)
-    try:
-        with urllib.request.urlopen(req, timeout=15) as r:
-            return json.loads(r.read())
-    except urllib.error.HTTPError as e:
-        if e.code == 404: return []
-        raise
+    for attempt in range(retries):
+        try:
+            with urllib.request.urlopen(req, timeout=20) as r:
+                return json.loads(r.read())
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                return []
+            raise
+        except (TimeoutError, OSError) as e:
+            if attempt < retries - 1:
+                wait = 2 ** (attempt + 1)
+                print(f"  Network error ({e}), retrying in {wait}s...")
+                time.sleep(wait)
+            else:
+                print(f"  fetch_json failed after {retries} attempts, skipping.")
+                return None
 
 def fetch_html_codes(path):
     clean = re.sub(r'^\.\.?/', '', path)
@@ -462,7 +472,7 @@ def import_inspections(restaurant_id, source_id, since_date=None):
     return added
 
 
-def rescrape_ri(dry_run=False):
+def rescrape_ri(dry_run=False, skip=0):
     """
     Re-fetch HTML violation codes for all existing RI inspections and update
     any whose score changes as a result of proper FDA code-based severity.
@@ -470,8 +480,11 @@ def rescrape_ri(dry_run=False):
     Skips restaurants with zero violations (nothing to improve).
     Only writes to the DB when the recomputed score differs from what's stored.
     Clears ai_summary only for restaurants whose latest inspection score changed.
+
+    skip: number of restaurants to skip at the start (for resuming after a crash).
     """
     from sqlalchemy import func, exists
+    from sqlalchemy.exc import OperationalError
 
     app = create_app()
     with app.app_context():
@@ -487,11 +500,14 @@ def rescrape_ri(dry_run=False):
                     exists().where(Violation.inspection_id == Inspection.id)
                 )
             )
+            .order_by(Restaurant.id)
             .all()
         )
 
         total = len(has_violation)
-        print(f"Checking {total} RI restaurants with violations{'  (dry run)' if dry_run else ''}...")
+        if skip:
+            print(f"Skipping first {skip} restaurants (resume mode).")
+        print(f"Checking {total - skip} of {total} RI restaurants with violations{'  (dry run)' if dry_run else ''}...")
         sys.stdout.flush()
 
         total_checked = 0
@@ -499,6 +515,9 @@ def rescrape_ri(dry_run=False):
         total_skipped = 0
 
         for idx, restaurant in enumerate(has_violation):
+            if idx < skip:
+                continue
+
             source_id = str(restaurant.source_id)
             api_data  = fetch_json(INSPECTIONS_URL.format(encode_id(source_id)))
             if not api_data:
@@ -516,59 +535,74 @@ def rescrape_ri(dry_run=False):
                     api_map[insp_date] = (pp, vdict)
 
             restaurant_score_changed = False
-            latest_date = db.session.query(func.max(Inspection.inspection_date)).filter(
-                Inspection.restaurant_id == restaurant.id
-            ).scalar()
+            try:
+                latest_date = db.session.query(func.max(Inspection.inspection_date)).filter(
+                    Inspection.restaurant_id == restaurant.id
+                ).scalar()
 
-            for insp in Inspection.query.filter_by(restaurant_id=restaurant.id).all():
-                if not insp.violations:
-                    continue
-                if insp.inspection_date not in api_map:
-                    continue  # inspection older than what API returns
+                for insp in Inspection.query.filter_by(restaurant_id=restaurant.id).all():
+                    if not insp.violations:
+                        continue
+                    if insp.inspection_date not in api_map:
+                        continue  # inspection older than what API returns
 
-                pp, vdict = api_map[insp.inspection_date]
-                codes     = fetch_html_codes(pp)
-                if not codes:
-                    continue  # no codes found in HTML (e.g. blank report)
+                    pp, vdict = api_map[insp.inspection_date]
+                    codes     = fetch_html_codes(pp)
+                    if not codes:
+                        continue  # no codes found in HTML (e.g. blank report)
 
-                new_violations = parse_violations(vdict, codes)
-                new_risk  = sum(3 if v["severity"] == "critical" else
-                                2 if v["severity"] == "major" else 1
-                                for v in new_violations)
-                new_score = risk_to_score(new_risk)
+                    new_violations = parse_violations(vdict, codes)
+                    new_risk  = sum(3 if v["severity"] == "critical" else
+                                    2 if v["severity"] == "major" else 1
+                                    for v in new_violations)
+                    new_score = risk_to_score(new_risk)
 
-                total_checked += 1
-                if new_score == insp.score:
-                    continue
+                    total_checked += 1
+                    if new_score == insp.score:
+                        continue
 
-                old_score = insp.score
-                if not dry_run:
-                    Violation.query.filter_by(inspection_id=insp.id).delete()
-                    for v in new_violations:
-                        db.session.add(Violation(
-                            inspection_id     = insp.id,
-                            violation_code    = v["code"],
-                            description       = v["description"],
-                            severity          = v["severity"],
-                            corrected_on_site = False,
-                        ))
-                    insp.score      = new_score
-                    insp.risk_score = new_risk
-                    insp.result     = score_to_result(new_score)
+                    old_score = insp.score
+                    if not dry_run:
+                        Violation.query.filter_by(inspection_id=insp.id).delete()
+                        for v in new_violations:
+                            db.session.add(Violation(
+                                inspection_id     = insp.id,
+                                violation_code    = v["code"],
+                                description       = v["description"],
+                                severity          = v["severity"],
+                                corrected_on_site = False,
+                            ))
+                        insp.score      = new_score
+                        insp.risk_score = new_risk
+                        insp.result     = score_to_result(new_score)
 
-                if insp.inspection_date == latest_date:
-                    restaurant_score_changed = True
+                    if insp.inspection_date == latest_date:
+                        restaurant_score_changed = True
 
-                total_updated += 1
-                print(f"  {restaurant.name} | {insp.inspection_date} | score {old_score} → {new_score}")
+                    total_updated += 1
+                    print(f"  {restaurant.name} | {insp.inspection_date} | score {old_score} → {new_score}")
 
-                time.sleep(0.15)
+                    time.sleep(0.15)
 
-            if restaurant_score_changed and not dry_run:
-                restaurant.ai_summary = None
+                if restaurant_score_changed and not dry_run:
+                    restaurant.ai_summary = None
 
-            if not dry_run and (idx + 1) % 50 == 0:
-                db.session.commit()
+                if not dry_run and (idx + 1) % 50 == 0:
+                    db.session.commit()
+
+            except OperationalError as exc:
+                print(f"\n  DB connection lost at idx={idx} ({restaurant.name}): {exc}")
+                print(f"  Rolling back and reconnecting...")
+                try:
+                    db.session.rollback()
+                except Exception:
+                    pass
+                db.engine.dispose()
+                print(f"  Reconnected. Skipping restaurant and continuing.")
+                print(f"  TIP: re-run with --skip={idx} to retry from this point.")
+                total_skipped += 1
+                time.sleep(2)
+                continue
 
             if (idx + 1) % 100 == 0:
                 print(f"  [{idx+1}/{total}] {total_updated} updated so far...")
@@ -582,19 +616,22 @@ def rescrape_ri(dry_run=False):
         print(f"\nRescrape {'(dry run) ' if dry_run else ''}complete:")
         print(f"  {total_checked:,} inspections checked with HTML codes")
         print(f"  {total_updated:,} inspections updated (score changed)")
-        print(f"  {total_skipped:,} restaurants skipped (API returned nothing)")
+        print(f"  {total_skipped:,} restaurants skipped (API returned nothing or connection error)")
 
 
 def main():
     days    = 5
+    skip    = 0
     rescrape = '--rescrape' in sys.argv
     dry_run  = '--dry-run'  in sys.argv
     for arg in sys.argv[1:]:
         if arg.startswith('--days='):
             days = int(arg.split('=', 1)[1])
+        elif arg.startswith('--skip='):
+            skip = int(arg.split('=', 1)[1])
 
     if rescrape:
-        rescrape_ri(dry_run=dry_run)
+        rescrape_ri(dry_run=dry_run, skip=skip)
         return
 
     facilities = fetch_recent_facilities(days)

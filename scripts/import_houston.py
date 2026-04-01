@@ -73,6 +73,141 @@ def _map_severity(text: str) -> str:
     return 'minor'
 
 
+# City of Houston ordinance violation severity lookup.
+# Keys are the violation code with the "COH-" prefix stripped.
+# An exact subitem match is tried first; then the section-level default.
+# Source: https://houston-tx.healthinspections.us/media/violations.cfm
+_COH_SEVERITY: dict[str, str] = {
+    # ── Section-level defaults ────────────────────────────────────────────────
+    '20-1':       'minor',    # Sec. 20-001: refused samples / denial of entry
+    '20-2':       'major',    # Sec. 20-002: tagged food used or not held
+    '20-3':       'major',    # Sec. 20-003: failed to follow rules/regulations
+    '20-4':       'minor',    # Sec. 20-004: charity bake sale violations
+    '20-17':      'major',    # Sec. 20-017: TFER non-compliance
+    '20-19':      'major',    # Sec. 20-019: default Serious; (b) → critical
+    '20-20':      'major',    # Sec. 20-020: default Serious; (c) → minor, (g) → critical
+    '20-21.01':   'major',    # Sec. 20-021.01: food condition/source
+    '20-21.02':   'major',    # Sec. 20-021.02: food protection/temp; (c) → critical
+    '20-21.03':   'major',    # Sec. 20-021.03: food storage/temp control
+    '20-21.04':   'major',    # Sec. 20-021.04: food preparation
+    '20-21.05':   'major',    # Sec. 20-021.05: food service/display
+    '20-21.06':   'major',    # Sec. 20-021.06: food transport
+    '20-21.07':   'major',    # Sec. 20-021.07: employee communicable disease
+    '20-21.08':   'major',    # Sec. 20-021.08: handwashing/hygiene; (d)(e)(f) → minor
+    '20-21.09':   'major',    # Sec. 20-021.09: employee food/tobacco/cleanliness
+    '20-21.10':   'minor',    # Sec. 20-021.10: equipment (mostly General); (i)(j) → major
+    '20-21.11':   'major',    # Sec. 20-021.11: utensil washing/sanitization
+    '20-21.12':   'major',    # Sec. 20-021.12: sanitization methods; (a) → critical
+    '20-21.13':   'major',    # Sec. 20-021.13: dishwasher sanitization
+    '20-21.14':   'major',    # Sec. 20-021.14: equipment/utensil handling
+    '20-21.15':   'major',    # Sec. 20-021.15: water supply; (a)(c) → critical
+    '20-21.16':   'critical', # Sec. 20-021.16: sewage disposal — always Substantial
+    '20-21.17':   'major',    # Sec. 20-021.17: plumbing/cross-connections; (b)(d)(e) → minor
+    '20-21.18':   'minor',    # Sec. 20-021.18: toilet facilities
+    '20-21.19':   'major',    # Sec. 20-021.19: handwashing sink availability; (d) → minor
+    '20-21.20':   'minor',    # Sec. 20-021.20: garbage/refuse; (a)(05) → major
+    '20-21.21':   'major',    # Sec. 20-021.21: pest control; (b) → minor
+    '20-21.22':   'minor',    # Sec. 20-021.22: floors
+    '20-21.23':   'minor',    # Sec. 20-021.23: walls/ceilings; (i)(01)(02) → major
+    '20-21.24':   'minor',    # Sec. 20-021.24: lighting
+    '20-21.25':   'minor',    # Sec. 20-021.25: ventilation
+    '20-21.26':   'minor',    # Sec. 20-021.26: dressing rooms/lockers
+    '20-21.27':   'major',    # Sec. 20-021.27: poisonous/toxic materials
+    '20-21.28':   'minor',    # Sec. 20-021.28: premises maintenance
+    '20-22':      'major',    # Sec. 20-022: mobile food unit compliance
+    '20-23':      'major',    # Sec. 20-023: temporary food establishment
+    '20-24':      'major',    # Sec. 20-024: communicable disease/exclusion; (b) → critical
+    '20-25':      'minor',    # Sec. 20-025: construction without approved plans
+    '20-26':      'minor',    # Sec. 20-026: required postings (Heimlich, notices)
+    '20-36':      'critical', # Sec. 20-036: operating without Food Dealer's Permit
+    '20-37':      'critical', # Sec. 20-037: mobile unit without permit/medallion; (c) → minor
+    '20-39':      'minor',    # Sec. 20-039: frozen dessert permit
+    '20-53':      'major',    # Sec. 20-053: food service manager certification failures
+    '20-56':      'minor',    # Sec. 20-056: cert posting/possession
+    '20-61':      'minor',    # Sec. 20-061: fraudulent cert use
+    '20-63':      'major',    # Sec. 20-063: cert from other approved agency
+    '20-64':      'major',    # Sec. 20-064: bed and breakfast cert
+    '40-8':       'minor',    # Sec. 40-008: illegal booth on public property
+    '40-9':       'major',    # Sec. 40-009: frozen dessert vehicle violations; (b) → minor
+
+    # ── Subitem overrides — Substantial (critical) ────────────────────────────
+    '20-19(b)':        'critical',  # operating non-conforming establishment
+    '20-20(g)':        'critical',  # resumed operation before conditions resolved
+    '20-21.02(c)':     'critical',  # failed to discontinue operation in emergency
+    '20-21.12(a)':     'critical',  # no three-compartment sink for manual washing
+    '20-21.15(a)':     'critical',  # failure to provide enough potable water
+    '20-21.15(c)':     'critical',  # failure to provide water at required temps
+    '20-24(b)':        'critical',  # continued operation after restriction/exclusion order
+    '20-36(a)':        'critical',  # operating without permit (subitem explicit)
+    '20-37(a)':        'critical',  # mobile unit operating without permit
+    '20-37(b)':        'critical',  # mobile unit without medallion (operating)
+
+    # ── Subitem overrides — General (minor) ───────────────────────────────────
+    '20-20(c)':        'minor',   # inspection report not posted
+    '20-21.08(d)':     'minor',   # employee outer clothing not clean
+    '20-21.08(e)':     'minor',   # no effective hair restraint
+    '20-21.08(f)':     'minor',   # nail polish/jewelry while preparing food
+    '20-21.10(a)':     'minor',   # equipment/utensil construction materials
+    '20-21.10(b)':     'minor',   # equipment design/fabrication
+    '20-21.10(c)':     'minor',   # food-contact surfaces for in-place cleaning
+    '20-21.10(d)':     'minor',   # in-place cleaning design
+    '20-21.10(e)':     'minor',   # fixed equipment for pressure spray cleaning
+    '20-21.10(f)':     'minor',   # indicating thermometers
+    '20-21.10(g)':     'minor',   # nonfood-contact surfaces
+    '20-21.10(h)':     'minor',   # ventilation hood
+    '20-21.10(i)':     'major',   # existing equipment not in good repair/sanitary — Serious
+    '20-21.10(j)':     'major',   # equipment under sewer/water lines — Serious
+    '20-21.10(k)':     'minor',   # table/counter mounted equipment clearance
+    '20-21.10(l)':     'minor',   # floor mounted equipment clearance
+    '20-21.10(m)':     'minor',   # plumbing installation at fixtures
+    '20-21.10(n)':     'minor',   # aisle widths
+    '20-21.17(b)':     'minor',   # non-potable pipe identification
+    '20-21.17(d)':     'minor',   # grease trap
+    '20-21.17(e)':     'minor',   # garbage grinder
+    '20-21.19(d)':     'minor',   # handwashing sink/fixtures not kept clean/good repair
+    '20-21.20(a)(01)': 'minor',   # garbage container construction
+    '20-21.20(a)(02)': 'minor',   # garbage container not covered when full
+    '20-21.20(a)(03)': 'minor',   # outside containers not covered
+    '20-21.20(a)(04)': 'minor',   # insufficient garbage containers
+    '20-21.20(a)(05)': 'major',   # soiled containers cleaned in way that contaminates food
+    '20-21.20(b)':     'minor',   # outside storage areas
+    '20-21.20(c)':     'minor',   # disposal frequency
+    '20-21.21(b)':     'minor',   # openings to outside not protected from rodents/insects
+    '20-21.23(i)(01)': 'major',   # floors/walls cleaned during food exposure — Serious
+    '20-21.23(i)(02)': 'major',   # mop water disposed into lavatory/sink — Serious
+    '20-36(f)':        'major',   # restricted warehouse with PHF — Serious
+    '20-37(c)':        'minor',   # no medallion affixed/displayed
+    '40-9(b)':         'minor',   # frozen dessert truck warning sign violations
+}
+
+
+def _coh_severity(code: str) -> str:
+    """
+    Return the severity for a City of Houston ordinance code (COH-xx-xx).
+
+    Strategy:
+      1. Strip the 'COH-' prefix.
+      2. Codes not in Chapter 20 or 40 (e.g. COH-21-xxx smoking) → 'minor'.
+      3. Try an exact subitem match (e.g. '20-21.10(i)').
+      4. Fall back to section-level default (strip from first '(' char).
+      5. If still not found, return 'minor'.
+    """
+    rest = code[4:]   # strip 'COH-'
+    if not (rest.startswith('20-') or rest.startswith('40-')):
+        return 'minor'
+    # 1. Exact subitem match
+    sev = _COH_SEVERITY.get(rest)
+    if sev:
+        return sev
+    # 2. Section-level default (strip from first '(')
+    paren = rest.find('(')
+    if paren > 0:
+        sev = _COH_SEVERITY.get(rest[:paren])
+        if sev:
+            return sev
+    return 'minor'
+
+
 # ── Score ─────────────────────────────────────────────────────────────────────
 
 def compute_score(violations: list) -> tuple:
@@ -113,9 +248,23 @@ def unique_slug(base: str, seen: set) -> str:
 
 _STATE_ZIP_RE = re.compile(r'\b([A-Z]{2})[,\s]+(\d{5})\b')
 
+# Street suffixes that should never be mistaken for a city name.
+_STREET_SUFFIXES = {
+    'ALY', 'AVE', 'BLVD', 'BND', 'BR', 'BYP', 'CIR', 'CLOSE', 'CORR',
+    'COURT', 'CR', 'CRST', 'CT', 'CV', 'DR', 'EXPY', 'EXT', 'FWY',
+    'GDNS', 'GLN', 'GRN', 'GRV', 'HWY', 'HOLW', 'HTS', 'IS', 'KNL',
+    'LK', 'LN', 'LOOP', 'MALL', 'MDW', 'MNR', 'PKWY', 'PL', 'PLZ',
+    'PT', 'RD', 'RDGE', 'ROW', 'RUN', 'SQ', 'ST', 'STE', 'TER',
+    'TPKE', 'TR', 'TRACE', 'TRAIL', 'TRL', 'TRWY', 'TUNL', 'VW',
+    'WAY', 'WALK', 'XING',
+    # Numbered/directional suffixes that sometimes trail an address
+    'N', 'S', 'E', 'W', 'NE', 'NW', 'SE', 'SW',
+}
+
 def parse_address(raw: str):
     """
     '609 W GULF BANK RD HOUSTON TX 77037' → (street, city, state, zip)
+    '123 MAIN ST TX 77037'                → ('123 Main St', 'Houston', 'TX', '77037')
     """
     raw = re.sub(r'<[^>]+>', ' ', raw)   # strip any leftover HTML tags
     raw = re.sub(r'\s+', ' ', raw).strip().upper()
@@ -125,13 +274,13 @@ def parse_address(raw: str):
     if not m:
         return raw.title(), 'Houston', STATE, None
 
-    state = m.group(1)
-    zip5  = m.group(2)
+    state  = m.group(1)
+    zip5   = m.group(2)
     before = raw[:m.start()].strip()
 
-    # Last word before state abbreviation = city
+    # Last word before state abbreviation = city, unless it's a street suffix.
     parts = before.rsplit(None, 1)
-    if len(parts) == 2:
+    if len(parts) == 2 and parts[1] not in _STREET_SUFFIXES:
         return parts[0].title(), parts[1].title(), state, zip5
     return before.title(), 'Houston', state, zip5
 
@@ -332,9 +481,14 @@ def parse_detail(html: str, facility_id: str) -> dict | None:
         if not desc:
             desc = code
 
-        # Severity: all violations under "Foodborne Illness Risk Factors" are critical.
-        # All others (Good Retail Practices, etc.) are minor.
-        severity = 'critical' if 'foodborne illness risk factors' in current_category else 'minor'
+        # Severity: COH-20/40-xxx → lookup table; FDA codes under "Foodborne
+        # Illness Risk Factors" category → critical; everything else → minor.
+        if code.upper().startswith('COH-'):
+            severity = _coh_severity(code.upper())
+        elif 'foodborne illness risk factors' in current_category:
+            severity = 'critical'
+        else:
+            severity = 'minor'
 
         # Corrected on site: look in the HTML between this match and the next
         end_pos   = segments[idx + 1].start() if idx + 1 < len(segments) else len(html)
