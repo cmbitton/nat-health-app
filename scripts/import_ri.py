@@ -1,19 +1,21 @@
 #!/usr/bin/env python3
 """
-Incremental DB sync — queries the RI API for recently inspected facilities
-and syncs only those to the database. Replaces the old approach of iterating
-all 6,716 locations from locations.json every run.
+Rhode Island health inspection importer — incremental daily sync and full rescrape.
 
 Usage:
-    python3 scripts/sync_db.py            # sync last 5 days (default)
-    python3 scripts/sync_db.py --days=3   # sync last N days
+    python3 scripts/import_ri.py              # sync last 5 days (default)
+    python3 scripts/import_ri.py --days=3     # sync last N days
+    python3 scripts/import_ri.py --rescrape   # re-fetch HTML codes for all existing RI data,
+                                              # update only inspections whose score changes
+    python3 scripts/import_ri.py --rescrape --dry-run  # preview without writing
 
-No Google Maps key needed — only hits the RI inspections API.
+Set GOOGLE_MAPS_KEY to enrich new restaurants with cuisine type via Google Places.
 """
 
 import base64
 import json
 import math
+import os
 import re
 import sys
 import time
@@ -30,6 +32,7 @@ from app.db import db
 from app.models.restaurant import Restaurant
 from app.models.inspection import Inspection
 from app.models.violation import Violation
+from scripts.place_types import CUISINE_TYPE_MAP
 
 INSPECTIONS_URL = "https://ri.healthinspections.us/ri/API/index.cfm/inspectionsData/{}"
 SEARCH_URL      = "https://ri.healthinspections.us/ri/API/index.cfm/search/{}/{}"
@@ -37,8 +40,156 @@ HTML_BASE       = "https://ri.healthinspections.us/"
 API_HEADERS     = {"Accept": "application/json", "User-Agent": "Mozilla/5.0",
                    "Referer": "https://ri.healthinspections.us/"}
 
+GOOGLE_MAPS_KEY  = os.environ.get("GOOGLE_MAPS_KEY")
+PLACES_URL       = "https://places.googleapis.com/v1/places:searchText"
+# Providence, RI — bias Google Places results toward RI
+_RI_LAT, _RI_LNG = 41.7798, -71.4373
+
+def fetch_cuisine(name, address):
+    """Look up cuisine type for a new restaurant via Google Places. Returns None if unavailable."""
+    if not GOOGLE_MAPS_KEY:
+        return None
+    body = json.dumps({
+        "textQuery":      f"{name} {address}",
+        "maxResultCount": 1,
+        "locationBias": {"circle": {
+            "center": {"latitude": _RI_LAT, "longitude": _RI_LNG},
+            "radius": 50000.0,
+        }},
+    }).encode()
+    req = urllib.request.Request(
+        PLACES_URL, data=body, method="POST",
+        headers={
+            "Content-Type":     "application/json",
+            "X-Goog-Api-Key":   GOOGLE_MAPS_KEY,
+            "X-Goog-FieldMask": "places.types",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as r:
+            places = json.loads(r.read()).get("places", [])
+        types = places[0].get("types", []) if places else []
+        for t in types:
+            if t in CUISINE_TYPE_MAP:
+                return CUISINE_TYPE_MAP[t]
+    except Exception:
+        pass
+    return None
+
 PRIORITY_ITEMS            = {4, 6, 8, 9, 11, 12, 13, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 26, 27, 28}
 PRIORITY_FOUNDATION_ITEMS = {1, 3, 5, 10, 14, 25, 29}
+
+# FDA Food Code 2022 severity by code section (P=Priority/critical, Pf=Priority Foundation/major, C=Core/minor)
+# Subsection-specific entries take precedence; code_weight() falls back to base code when needed.
+CODE_SEVERITY = {
+    "2-101.11": "Pf", "2-102.11": "Pf", "2-102.12": "C",  "2-103.11": "Pf",
+    "2-201.11": "P",  "2-201.12": "P",  "2-201.13": "P",
+    "2-301.11": "P",  "2-301.12": "P",  "2-301.14": "P",  "2-301.15": "Pf",
+    "2-301.16": "Pf", "2-302.11": "Pf", "2-303.11": "C",  "2-304.11": "C",
+    "2-401.11": "C",  "2-401.12": "C",  "2-401.13": "C",  "2-402.11": "C",
+    "2-403.11": "Pf",
+    "3-101.11": "P",  "3-201.11": "P",  "3-201.12": "P",  "3-201.13": "P",
+    "3-201.14": "P",  "3-201.15": "P",  "3-201.16": "P",  "3-201.17": "P",
+    "3-202.11": "P",  "3-202.12": "P",  "3-202.13": "P",  "3-202.14": "P",
+    "3-202.15": "C",  "3-202.16": "C",  "3-202.17": "C",  "3-202.18": "P",
+    "3-301.11": "P",  "3-302.11": "P",  "3-302.12": "P",  "3-302.13": "Pf",
+    "3-302.14": "P",  "3-302.15": "P",
+    "3-303.11": "C",  "3-303.12": "C",
+    "3-304.11": "P",  "3-304.12": "C",  "3-304.13": "C",  "3-304.14": "C",
+    "3-304.15": "C",  "3-304.16": "C",  "3-304.17": "C",
+    "3-305.11": "C",  "3-305.12": "C",
+    "3-306.11": "C",  "3-306.12": "C",  "3-306.13": "C",
+    "3-307.11": "C",
+    "3-401.11": "P",  "3-401.12": "P",  "3-401.13": "P",  "3-401.14": "P",
+    "3-402.11": "P",  "3-402.12": "P",
+    "3-403.10": "P",  "3-403.11": "P",
+    "3-404.11": "P",
+    "3-501.11": "P",  "3-501.12": "P",  "3-501.13": "P",  "3-501.14": "P",
+    "3-501.15": "P",  "3-501.16": "P",  "3-501.17": "P",  "3-501.18": "P",
+    "3-501.19": "P",
+    "3-502.11": "P",  "3-502.12": "Pf",
+    "3-601.11": "P",  "3-601.12": "P",
+    "3-602.11": "C",  "3-602.12": "C",
+    "3-603.11": "C",
+    "3-701.11": "P",
+    "3-801.11": "P",
+    "4-101.11": "C",  "4-101.12": "C",  "4-101.13": "C",  "4-101.14": "C",
+    "4-101.15": "C",  "4-101.16": "C",  "4-101.17": "C",  "4-101.18": "C",
+    "4-101.19": "C",
+    "4-102.11": "C",
+    "4-201.11": "C",  "4-201.12": "C",
+    "4-202.11": "Pf", "4-202.12": "C",  "4-202.13": "C",
+    "4-203.11": "C",  "4-203.12": "C",
+    "4-204.11": "C",  "4-204.12": "C",  "4-204.13": "C",  "4-204.14": "C",
+    "4-204.15": "C",  "4-204.16": "C",  "4-204.17": "C",  "4-204.18": "C",
+    "4-204.19": "C",  "4-204.110": "C", "4-204.111": "C", "4-204.112": "C",
+    "4-204.110(A)": "P", "4-204.110(B)": "Pf",
+    "4-301.11": "Pf", "4-301.12": "C",
+    "4-302.11": "Pf", "4-302.12": "C",  "4-302.13": "C",  "4-302.14": "C",
+    "4-501.11": "C",  "4-501.12": "C",  "4-501.13": "C",  "4-501.14": "Pf",
+    "4-501.15": "C",  "4-501.16": "C",  "4-501.17": "C",  "4-501.18": "C",
+    "4-502.11": "C",  "4-502.12": "C",  "4-502.13": "C",  "4-502.14": "C",
+    "4-601.11": "Pf",
+    "4-601.11(A)": "Pf", "4-601.11(B)": "C", "4-601.11(C)": "C",
+    "4-602.11": "P",  "4-602.12": "C",  "4-602.13": "C",
+    "4-603.11": "C",  "4-603.12": "C",  "4-603.13": "C",  "4-603.14": "C",
+    "4-603.15": "C",  "4-603.16": "C",  "4-603.17": "C",
+    "4-701.10": "P",  "4-702.11": "P",  "4-703.11": "P",
+    "4-801.11": "C",  "4-802.11": "C",  "4-803.11": "C",
+    "4-901.11": "C",  "4-901.12": "C",
+    "4-902.11": "C",  "4-902.12": "C",  "4-902.13": "C",
+    "5-101.11": "Pf", "5-101.12": "C",  "5-101.13": "C",
+    "5-102.11": "P",  "5-102.12": "P",  "5-102.13": "P",
+    "5-103.11": "Pf", "5-103.12": "Pf",
+    "5-104.11": "C",
+    "5-201.11": "C",  "5-201.12": "C",
+    "5-202.11": "Pf", "5-202.12": "C",  "5-202.13": "C",
+    "5-203.11": "Pf", "5-203.12": "C",  "5-203.13": "C",  "5-203.14": "C",
+    "5-204.11": "C",  "5-205.11": "Pf", "5-205.12": "C",  "5-205.13": "C",
+    "5-205.14": "C",  "5-205.15": "C",  "5-205.16": "C",
+    "5-301.11": "C",  "5-302.11": "Pf",
+    "5-401.11": "C",  "5-402.11": "Pf", "5-402.12": "C",  "5-402.13": "C",
+    "5-403.11": "Pf", "5-403.12": "C",
+    "5-501.11": "C",  "5-501.12": "C",  "5-501.13": "C",  "5-501.14": "C",
+    "5-501.15": "C",  "5-501.16": "C",  "5-501.17": "C",
+    "5-502.11": "C",  "5-503.11": "C",
+    "6-101.11": "C",  "6-101.12": "C",  "6-101.13": "C",
+    "6-102.11": "C",
+    "6-201.11": "C",  "6-201.12": "C",  "6-201.13": "C",  "6-201.14": "C",
+    "6-201.15": "C",  "6-201.16": "C",  "6-201.17": "C",  "6-201.18": "C",
+    "6-202.11": "C",  "6-202.12": "C",  "6-202.13": "C",  "6-202.14": "C",
+    "6-202.15": "C",  "6-202.16": "C",
+    "6-301.11": "Pf", "6-301.12": "C",
+    "6-302.11": "Pf", "6-302.12": "C",
+    "6-303.11": "C",
+    "6-304.11": "C",
+    "6-305.11": "C",  "6-305.12": "C",
+    "6-401.10": "C",  "6-402.11": "C",  "6-403.11": "C",  "6-404.11": "C",
+    "6-501.11": "C",  "6-501.12": "C",  "6-501.13": "C",  "6-501.14": "C",
+    "6-501.15": "C",  "6-501.16": "C",  "6-501.17": "C",  "6-501.18": "C",
+    "6-501.19": "C",  "6-501.110": "C", "6-501.111": "C", "6-501.112": "Pf",
+    "6-501.113": "C", "6-501.114": "C", "6-501.115": "C", "6-501.116": "C",
+    "6-502.11": "C",
+    "7-101.11": "P",  "7-102.11": "P",
+    "7-201.11": "P",  "7-201.12": "P",
+    "7-202.11": "P",  "7-202.12": "P",  "7-202.13": "P",
+    "7-203.11": "P",  "7-204.11": "P",  "7-204.12": "P",  "7-204.13": "P",
+    "7-205.11": "P",  "7-206.11": "P",  "7-206.12": "P",  "7-206.13": "P",
+    "7-207.11": "P",  "7-207.12": "P",
+    "7-208.11": "P",
+    "7-209.11": "C",
+    "7-301.11": "P",
+}
+
+def code_weight(code):
+    """Look up severity weight from FDA code string. Falls back to base code (no subsection)."""
+    sev = CODE_SEVERITY.get(code)
+    if sev is None:
+        base = re.sub(r'\([A-Za-z]\)$', '', code)
+        sev = CODE_SEVERITY.get(base)
+    if sev == "P":  return 3
+    if sev == "Pf": return 2
+    return 1
 
 RI_MUNICIPALITIES = [
     "Barrington", "Bristol", "Burrillville", "Central Falls", "Charlestown",
@@ -105,22 +256,34 @@ def parse_violations(vdict, codes):
     out = []
     for idx, text in enumerate(v[0] for v in vdict.values() if v and v[0]):
         parts = text.split(" - ", 1)
+        code = codes[idx] if idx < len(codes) else ""
         if len(parts) == 2:
             try:
                 n    = int(parts[0].strip())
                 desc = parts[1].strip().capitalize()
-                sev  = item_severity(n)
-                code = codes[idx] if idx < len(codes) else str(n)
+                # Prefer FDA code-based severity when the code is known; fall back to item number
+                sev  = _severity_from_code_or_item(code, n)
+                if not code:
+                    code = str(n)
             except ValueError:
                 desc = text.strip().capitalize()
-                sev  = "minor"
-                code = codes[idx] if idx < len(codes) else ""
+                sev  = "minor" if not code else _severity_from_code(code)
         else:
             desc = text.strip().capitalize()
-            sev  = "minor"
-            code = codes[idx] if idx < len(codes) else ""
+            sev  = "minor" if not code else _severity_from_code(code)
         out.append({"code": code, "description": desc, "severity": sev})
     return out
+
+def _severity_from_code(code):
+    w = code_weight(code)
+    if w == 3: return "critical"
+    if w == 2: return "major"
+    return "minor"
+
+def _severity_from_code_or_item(code, item_n):
+    if code and code in CODE_SEVERITY:
+        return _severity_from_code(code)
+    return item_severity(item_n)
 
 def risk_to_score(risk):
     return round(100 * math.exp(-risk * 0.05))
@@ -277,11 +440,140 @@ def import_inspections(restaurant_id, source_id, since_date=None):
     return added
 
 
+def rescrape_ri(dry_run=False):
+    """
+    Re-fetch HTML violation codes for all existing RI inspections and update
+    any whose score changes as a result of proper FDA code-based severity.
+
+    Skips restaurants with zero violations (nothing to improve).
+    Only writes to the DB when the recomputed score differs from what's stored.
+    Clears ai_summary only for restaurants whose latest inspection score changed.
+    """
+    from sqlalchemy import func, exists
+
+    app = create_app()
+    with app.app_context():
+        # Restaurants that have at least one violation on record
+        has_violation = (
+            Restaurant.query
+            .filter_by(region="rhode-island")
+            .filter(Restaurant.source_id.isnot(None))
+            .filter(
+                exists().where(
+                    Inspection.restaurant_id == Restaurant.id
+                ).where(
+                    exists().where(Violation.inspection_id == Inspection.id)
+                )
+            )
+            .all()
+        )
+
+        total = len(has_violation)
+        print(f"Checking {total} RI restaurants with violations{'  (dry run)' if dry_run else ''}...")
+        sys.stdout.flush()
+
+        total_checked = 0
+        total_updated = 0
+        total_skipped = 0
+
+        for idx, restaurant in enumerate(has_violation):
+            source_id = str(restaurant.source_id)
+            api_data  = fetch_json(INSPECTIONS_URL.format(encode_id(source_id)))
+            if not api_data:
+                total_skipped += 1
+                continue
+
+            # Build map: inspection_date → (printablePath, violations_dict)
+            api_map = {}
+            for insp_data in api_data:
+                raw_date  = insp_data.get("columns", {}).get("0", "")
+                insp_date = parse_date(raw_date.replace("Inspection Date:", "").strip())
+                pp        = insp_data.get("printablePath", "")
+                vdict     = insp_data.get("violations", {})
+                if insp_date and pp:
+                    api_map[insp_date] = (pp, vdict)
+
+            restaurant_score_changed = False
+            latest_date = db.session.query(func.max(Inspection.inspection_date)).filter(
+                Inspection.restaurant_id == restaurant.id
+            ).scalar()
+
+            for insp in Inspection.query.filter_by(restaurant_id=restaurant.id).all():
+                if not insp.violations:
+                    continue
+                if insp.inspection_date not in api_map:
+                    continue  # inspection older than what API returns
+
+                pp, vdict = api_map[insp.inspection_date]
+                codes     = fetch_html_codes(pp)
+                if not codes:
+                    continue  # no codes found in HTML (e.g. blank report)
+
+                new_violations = parse_violations(vdict, codes)
+                new_risk  = sum(3 if v["severity"] == "critical" else
+                                2 if v["severity"] == "major" else 1
+                                for v in new_violations)
+                new_score = risk_to_score(new_risk)
+
+                total_checked += 1
+                if new_score == insp.score:
+                    continue
+
+                old_score = insp.score
+                if not dry_run:
+                    Violation.query.filter_by(inspection_id=insp.id).delete()
+                    for v in new_violations:
+                        db.session.add(Violation(
+                            inspection_id     = insp.id,
+                            violation_code    = v["code"],
+                            description       = v["description"],
+                            severity          = v["severity"],
+                            corrected_on_site = False,
+                        ))
+                    insp.score      = new_score
+                    insp.risk_score = new_risk
+                    insp.result     = score_to_result(new_score)
+
+                if insp.inspection_date == latest_date:
+                    restaurant_score_changed = True
+
+                total_updated += 1
+                print(f"  {restaurant.name} | {insp.inspection_date} | score {old_score} → {new_score}")
+
+                time.sleep(0.15)
+
+            if restaurant_score_changed and not dry_run:
+                restaurant.ai_summary = None
+
+            if not dry_run and (idx + 1) % 50 == 0:
+                db.session.commit()
+
+            if (idx + 1) % 100 == 0:
+                print(f"  [{idx+1}/{total}] {total_updated} updated so far...")
+                sys.stdout.flush()
+
+            time.sleep(0.3)
+
+        if not dry_run:
+            db.session.commit()
+
+        print(f"\nRescrape {'(dry run) ' if dry_run else ''}complete:")
+        print(f"  {total_checked:,} inspections checked with HTML codes")
+        print(f"  {total_updated:,} inspections updated (score changed)")
+        print(f"  {total_skipped:,} restaurants skipped (API returned nothing)")
+
+
 def main():
-    days = 5
+    days    = 5
+    rescrape = '--rescrape' in sys.argv
+    dry_run  = '--dry-run'  in sys.argv
     for arg in sys.argv[1:]:
         if arg.startswith('--days='):
             days = int(arg.split('=', 1)[1])
+
+    if rescrape:
+        rescrape_ri(dry_run=dry_run)
+        return
 
     facilities = fetch_recent_facilities(days)
     if not facilities:
@@ -341,12 +633,12 @@ def main():
                 else:
                     skipped += 1
             else:
-                # New location — create restaurant from API data (no geocoding here;
-                # refresh.py will enrich lat/lng and cuisine on next run)
+                # New location
                 street, city, state, zip5 = parse_address(fac.get("address", ""))
                 if not city or city in ('0', 'Unknown'):
                     city = None
-                slug = unique_slug(make_slug(name, city), seen_slugs)
+                slug    = unique_slug(make_slug(name, city), seen_slugs)
+                cuisine = fetch_cuisine(name, street)
 
                 restaurant = Restaurant(
                     source_id    = source_id,
@@ -358,7 +650,7 @@ def main():
                     zip          = zip5,
                     latitude     = None,
                     longitude    = None,
-                    cuisine_type = None,
+                    cuisine_type = cuisine,
                     license_type = fac.get("license_type") or None,
                     region       = "rhode-island",
                 )

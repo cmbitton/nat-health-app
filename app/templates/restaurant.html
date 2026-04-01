@@ -139,6 +139,19 @@
                 <div class="severity-dot minor" style="margin-top:0"></div>
                 Not Critical
             </div>
+            {% elif restaurant.region == 'houston' %}
+            <div class="legend-item">
+                <div class="severity-dot critical" style="margin-top:0"></div>
+                Substantial (Critical)
+            </div>
+            <div class="legend-item">
+                <div class="severity-dot major" style="margin-top:0"></div>
+                Serious (Major)
+            </div>
+            <div class="legend-item">
+                <div class="severity-dot minor" style="margin-top:0"></div>
+                General (Minor)
+            </div>
             {% else %}
             <div class="legend-item">
                 <div class="severity-dot critical" style="margin-top:0"></div>

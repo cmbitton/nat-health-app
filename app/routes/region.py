@@ -29,8 +29,6 @@ def _scored_restaurants(region, order='asc', limit=5, days=None):
     filters = [
         Restaurant.region == region,
         Inspection.risk_score.isnot(None),
-        Restaurant.cuisine_type.isnot(None),
-        ~Restaurant.cuisine_type.in_(_NON_RESTAURANT_TYPES),
     ]
     if days is not None:
         cutoff = date.today() - timedelta(days=days)

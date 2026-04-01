@@ -22,12 +22,18 @@ jobs:
       - name: RI — Sync database (last 5 days)
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-        run: flyctl ssh console -a forkgrade -C "python3 scripts/sync_db.py --days=5"
+        run: flyctl ssh console -a forkgrade -C "python3 scripts/import_ri.py --days=5"
 
       - name: NYC — Daily import (last 3 days)
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: flyctl ssh console -a forkgrade -C "python3 scripts/import_nyc.py --days=3"
+
+      # Houston daily import — re-enable after full historical import completes
+      # - name: Houston — Daily import (last 7 days)
+      #   env:
+      #     FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      #   run: flyctl ssh console -a forkgrade -C "python3 scripts/import_houston.py --days=7"
 
       - name: AI — Generate missing summaries
         env:
