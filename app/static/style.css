@@ -321,8 +321,11 @@ nav {
 .severity-dot.minor { background: var(--tier-low); }
 .violation-text {
     flex: 1;
+    min-width: 0;
     font-size: 14px;
     color: var(--text-secondary);
+    overflow-wrap: break-word;
+    word-break: break-word;
 }
 .violation-code {
     font-family: 'DM Mono', monospace;
@@ -332,6 +335,9 @@ nav {
     padding: 2px 8px;
     border-radius: 4px;
     flex-shrink: 0;
+    word-break: break-all;
+    max-width: 160px;
+    text-align: right;
 }
 .violation-legend {
     display: flex;
