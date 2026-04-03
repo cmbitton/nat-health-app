@@ -24,7 +24,7 @@
                         <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
                         <circle cx="12" cy="10" r="3"/>
                     </svg>
-                    {{ restaurant.address }}{% if restaurant.city %}, {{ restaurant.city }}{% endif %}, {{ restaurant.state }} {{ restaurant.zip or '' }}
+                    {{ restaurant.address }}{% if restaurant.city %}, {{ restaurant.city }}{% endif %}{% if restaurant.state %}, {{ restaurant.state }}{% endif %}{% if restaurant.zip %} {{ restaurant.zip }}{% endif %}
                 </div>
                 {% endif %}
                 {% if restaurant.cuisine_type %}
@@ -63,7 +63,7 @@
             {% endfor %}
         {% else %}
         <p>{{ restaurant.display_name }} is a {{ restaurant.cuisine_type or 'restaurant' }} located at
-        {{ restaurant.address }}{% if restaurant.city %}, {{ restaurant.city }}{% endif %}, {{ restaurant.state }}.</p>
+        {{ restaurant.address }}{% if restaurant.city %}, {{ restaurant.city }}{% endif %}{% if restaurant.state %}, {{ restaurant.state }}{% endif %}.</p>
         <p>Health inspection records are available below. Check the inspection history and violations
         section for details on past inspections conducted by the local health department.</p>
         {% endif %}
