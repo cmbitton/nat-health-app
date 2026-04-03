@@ -1,0 +1,62 @@
+name: Daily Database Backup
+
+on:
+  schedule:
+    - cron: '0 4 * * *'  # 4:00 AM UTC daily
+  workflow_dispatch:
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Install flyctl
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Install PostgreSQL client
+        run: sudo apt-get install -y postgresql-client
+
+      - name: Open Fly proxy to Postgres
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          flyctl proxy 5432:5432 -a forkgrade-db &
+          sleep 8
+
+      - name: Dump and compress database
+        env:
+          PGPASSWORD: ${{ secrets.DB_PASSWORD }}
+        run: |
+          FILENAME="forkgrade_$(date -u +%Y%m%d_%H%M%S).sql.gz"
+          pg_dump -h localhost -p 5432 -U forkgrade forkgrade | gzip > "$FILENAME"
+          echo "BACKUP_FILE=$FILENAME" >> $GITHUB_ENV
+          echo "Backup size: $(du -sh $FILENAME | cut -f1)"
+
+      - name: Upload to Backblaze B2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.B2_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.B2_APP_KEY }}
+          AWS_DEFAULT_REGION: us-east-005
+        run: |
+          aws s3 cp "$BACKUP_FILE" "s3://${{ secrets.B2_BUCKET }}/$BACKUP_FILE" \
+            --endpoint-url "${{ secrets.B2_ENDPOINT }}"
+          echo "Uploaded $BACKUP_FILE"
+
+      - name: Delete backups older than 7 days
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.B2_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.B2_APP_KEY }}
+          AWS_DEFAULT_REGION: us-east-005
+        run: |
+          CUTOFF=$(date -u -d '7 days ago' +%Y%m%d)
+          aws s3 ls "s3://${{ secrets.B2_BUCKET }}/" \
+            --endpoint-url "${{ secrets.B2_ENDPOINT }}" \
+          | awk '{print $4}' | grep '^forkgrade_' | while read f; do
+              d=$(echo "$f" | grep -oP '\d{8}' | head -1)
+              if [ -n "$d" ] && [ "$d" \< "$CUTOFF" ]; then
+                aws s3 rm "s3://${{ secrets.B2_BUCKET }}/$f" \
+                  --endpoint-url "${{ secrets.B2_ENDPOINT }}"
+                echo "Deleted old backup: $f"
+              fi
+            done
