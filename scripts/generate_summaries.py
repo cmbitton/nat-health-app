@@ -117,7 +117,7 @@ def generate_summary(restaurant_id, prompt, retries=4):
     for attempt in range(retries):
         try:
             resp = client.models.generate_content(
-                model='gemini-2.5-flash-lite-preview-09-2025',
+                model='gemini-2.5-flash-lite',
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     system_instruction=SYSTEM_PROMPT,

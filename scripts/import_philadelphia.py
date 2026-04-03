@@ -59,9 +59,10 @@ BASE_URL   = 'https://philadelphia-pa.healthinspections.us'
 SEARCH_URL = BASE_URL + '/philadelphia/search.cfm'
 REPORT_URL = BASE_URL + '/_templates/551/RetailFood/_report_full.cfm'
 DOMAIN_ID  = 551
-REGION     = 'philadelphia'
-WORKERS    = 20
-CHUNK_DAYS = 1     # days per search window; 2-day windows stay under the 100-result cap
+REGION          = 'philadelphia'
+WORKERS         = 20   # parallel detail-page workers
+SEARCH_WORKERS  = 3    # parallel search-chunk workers
+CHUNK_DAYS      = 1    # days per search window; 2-day windows stay under the 100-result cap
 
 # ── HTTP ──────────────────────────────────────────────────────────────────────
 
@@ -135,7 +136,7 @@ _INSP_LINK_RE = re.compile(
 )
 # Address block right after a facilityID link
 _ADDR_BLOCK_RE  = re.compile(r'margin-bottom:10px;">(.*?)</div>', re.DOTALL | re.IGNORECASE)
-_CITY_STATE_ZIP = re.compile(r'([^,<]+),\s*[A-Z]{2}\s+(\d{5})', re.IGNORECASE)
+_CITY_STATE_ZIP = re.compile(r'([^,<]+),\s*([A-Z]{2})\s+(\d{5})', re.IGNORECASE)
 
 
 def parse_search_page(html: str) -> list[dict]:
@@ -167,6 +168,7 @@ def parse_search_page(html: str) -> list[dict]:
             'insp_date':   insp_date,
             'street':      '',
             'city':        'Philadelphia',
+            'state':       'PA',
             'zipcode':     '',
         })
 
@@ -179,15 +181,24 @@ def parse_search_page(html: str) -> list[dict]:
         addr_m  = _ADDR_BLOCK_RE.search(snippet)
         if not addr_m:
             continue
-        addr_text = _strip(addr_m.group(1))
-        csz_m = _CITY_STATE_ZIP.search(addr_text)
+        # Split on <br> tags BEFORE stripping to preserve street vs city line structure
+        addr_raw = addr_m.group(1)
+        lines = [_strip(ln) for ln in re.split(r'<br\s*/?>', addr_raw, flags=re.IGNORECASE)]
+        lines = [l for l in lines if l]
+        # Try city/state/zip from the last non-empty line
+        csz_m = _CITY_STATE_ZIP.search(lines[-1]) if lines else None
         if csz_m:
-            rec['city']    = csz_m.group(1).strip().title()
-            rec['zipcode'] = csz_m.group(2).strip()
-            street_raw     = addr_text[:csz_m.start()].strip()
-            rec['street']  = _SPACES_RE.sub(' ', street_raw).title()
-        else:
-            rec['street'] = addr_text
+            city_raw = csz_m.group(1).strip()
+            city_raw = re.sub(
+                r'^(?:Non[\s-]Permanent[\s-]Location|Mobile\s+Food\s+Unit)\s*',
+                '', city_raw, flags=re.IGNORECASE,
+            ).strip()
+            rec['city']    = city_raw.title()
+            rec['state']   = csz_m.group(2).upper()
+            rec['zipcode'] = csz_m.group(3).strip()
+            rec['street']  = ' '.join(lines[:-1]).title()
+        elif lines:
+            rec['street'] = ' '.join(lines).title()
 
     return results
 
@@ -395,6 +406,8 @@ def write_chunk(records: list[dict], dry_run: bool,
                 slug      = slug,
                 address   = rec.get('street', ''),
                 city      = rec.get('city', 'Philadelphia'),
+                state     = rec.get('state', 'PA'),
+                zip       = rec.get('zipcode', ''),
             )
             db.session.add(restaurant)
             db.session.flush()
@@ -457,6 +470,32 @@ def run_import(from_date: date, to_date: date, dry_run: bool,
         cur = nxt + timedelta(days=1)
     chunks.reverse()
 
+    # ── Phase 1: parallel search across all date chunks ───────────────────────
+    total_chunks = len(chunks)
+    print(f'  Searching {total_chunks} date chunks ({SEARCH_WORKERS} parallel)...', flush=True)
+
+    all_pairs: list[dict] = []
+    seen_insp: set[str]   = set()
+    done = 0
+
+    with ThreadPoolExecutor(max_workers=SEARCH_WORKERS) as pool:
+        futures = {
+            pool.submit(fetch_search_chunk, cf, ct): (cf, ct)
+            for cf, ct in chunks
+        }
+        for future in as_completed(futures):
+            results = future.result()
+            done += 1
+            for r in results:
+                if r['insp_id'] not in seen_insp:
+                    seen_insp.add(r['insp_id'])
+                    all_pairs.append(r)
+            if done % 200 == 0 or done == total_chunks:
+                print(f'  [{done}/{total_chunks}] chunks searched, '
+                      f'{len(all_pairs)} pairs collected...', flush=True)
+
+    print(f'  Search complete: {len(all_pairs)} inspection pairs found.', flush=True)
+
     with app.app_context():
         # Pre-load all known Philly restaurants to avoid per-record queries
         existing = {
@@ -471,72 +510,62 @@ def run_import(from_date: date, to_date: date, dry_run: bool,
                             .with_entities(Restaurant.slug).all()
         }
 
+        # ── Phase 2: bulk dedup against DB ────────────────────────────────────
+        if not dry_run and all_pairs:
+            known = {
+                row[0] for row in db.session.execute(
+                    db.text('SELECT source_id FROM inspections '
+                            'WHERE source_id = ANY(:ids)'),
+                    {'ids': [r['insp_id'] for r in all_pairs]}
+                ).fetchall()
+            }
+            all_pairs = [r for r in all_pairs if r['insp_id'] not in known]
+
+        print(f'  {len(all_pairs)} new inspections to fetch.', flush=True)
+
+        if not all_pairs:
+            print('\nDone: nothing new.')
+            return
+
+        # ── Phase 3: parallel detail fetches for all new inspections ──────────
+        insp_map: dict[str, dict | None] = {}
+        fetched = 0
+        total   = len(all_pairs)
+
+        with ThreadPoolExecutor(max_workers=WORKERS) as pool:
+            futures = {
+                pool.submit(_fetch_insp_page, r['insp_id']): r['insp_id']
+                for r in all_pairs
+            }
+            for future in as_completed(futures):
+                insp_id, detail = future.result()
+                insp_map[insp_id] = detail
+                fetched += 1
+                if fetched % 200 == 0 or fetched == total:
+                    print(f'  [{fetched}/{total}] detail pages fetched', end='\r', flush=True)
+        print()
+
+        for r in all_pairs:
+            r['detail'] = insp_map.get(r['insp_id'])
+
+        # ── Phase 4: write to DB in batches ───────────────────────────────────
+        WRITE_BATCH = 500
         total_r = total_i = total_skip = 0
-        committed = 0
 
-        for idx, (chunk_from, chunk_to) in enumerate(chunks):
-            label = f'{chunk_from.strftime("%m/%d/%Y")}–{chunk_to.strftime("%m/%d/%Y")}'
-            print(f'  Searching {label}...', end=' ', flush=True)
-
-            search_results = fetch_search_chunk(chunk_from, chunk_to)
-            print(f'{len(search_results)} pairs', flush=True)
-
-            if not search_results:
-                continue
-
-            # Filter out inspections already in DB by source_id
-            if not dry_run and search_results:
-                known = {
-                    row[0] for row in db.session.execute(
-                        db.text('SELECT source_id FROM inspections '
-                                'WHERE source_id = ANY(:ids)'),
-                        {'ids': [r['insp_id'] for r in search_results]}
-                    ).fetchall()
-                }
-                search_results = [r for r in search_results
-                                  if r['insp_id'] not in known]
-                if not search_results:
-                    continue
-
-            # Fetch inspection detail pages in parallel
-            insp_map: dict[str, dict | None] = {}
-            with ThreadPoolExecutor(max_workers=WORKERS) as pool:
-                futures = {
-                    pool.submit(_fetch_insp_page, r['insp_id']): r['insp_id']
-                    for r in search_results
-                }
-                done = 0
-                for future in as_completed(futures):
-                    insp_id, detail = future.result()
-                    insp_map[insp_id] = detail
-                    done += 1
-                    if done % 50 == 0 or done == len(futures):
-                        print(f'  {done}/{len(futures)} fetched', end='\r', flush=True)
-            if search_results:
-                print()
-
-            for r in search_results:
-                r['detail'] = insp_map.get(r['insp_id'])
-
+        for batch_start in range(0, len(all_pairs), WRITE_BATCH):
+            batch = all_pairs[batch_start: batch_start + WRITE_BATCH]
             new_r, new_i, skip = write_chunk(
-                search_results, dry_run,
-                existing, seen_slugs,
+                batch, dry_run, existing, seen_slugs,
                 db, Restaurant, Inspection, Violation
             )
             if not dry_run:
                 db.session.commit()
-                committed += new_i
-
             total_r    += new_r
             total_i    += new_i
             total_skip += skip
-
-            print(f'  Chunk {idx + 1}/{len(chunks)}: '
-                  f'+{new_r} restaurants, +{new_i} inspections, {skip} skipped')
-
-            if committed >= 250:
-                print(f'  Committed {committed} inspections so far...')
-                committed = 0
+            print(f'  [{min(batch_start + WRITE_BATCH, len(all_pairs))}/{len(all_pairs)}] '
+                  f'+{new_r} restaurants, +{new_i} inspections, {skip} skipped '
+                  f'[{total_i} total]', flush=True)
 
     print(f'\nDone: +{total_r} restaurants, +{total_i} inspections, '
           f'{total_skip} skipped.')

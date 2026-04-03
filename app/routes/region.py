@@ -384,7 +384,13 @@ def region_index(region):
         )
         if home_state:
             city_q = city_q.filter(Restaurant.state == home_state)
-        city_rows = city_q.group_by(Restaurant.city).order_by(Restaurant.city).all()
+        city_count = func.count(Restaurant.id)
+        city_rows = (
+            city_q.group_by(Restaurant.city)
+                  .having(city_count >= 3)
+                  .order_by(Restaurant.city)
+                  .all()
+        )
         neighborhoods = [
             {'city': city, 'count': cnt, 'city_slug': _city_slug(city or '')}
             for city, cnt in city_rows
