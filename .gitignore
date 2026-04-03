@@ -1,4 +1,3 @@
-# Claude Code local settings
 .claude/
 
 # Python
@@ -31,6 +30,7 @@ data/history.json
 
 # Database dumps and one-time migration scripts
 *.sql
+*.pdf
 scripts/migrate_sqlite_to_pg.py
 
 # OS
