@@ -19,7 +19,7 @@ def _recent_inspections(limit=10, restaurants_only=False):
             Restaurant.cuisine_type.isnot(None),
             ~Restaurant.cuisine_type.in_(_NON_RESTAURANT_TYPES),
         )
-    return q.order_by(Inspection.inspection_date.desc()).limit(limit).all()
+    return q.filter(Inspection.not_future()).order_by(Inspection.inspection_date.desc()).limit(limit).all()
 
 
 def _lowest_scores(limit=10):
@@ -37,6 +37,7 @@ def _lowest_scores(limit=10):
             Inspection.inspection_date == Restaurant.latest_inspection_date,
             Inspection.inspection_date >= cutoff,
             Inspection.score.isnot(None),
+            Inspection.not_future(),
         )
         .order_by(Inspection.score.asc())
         .limit(limit)

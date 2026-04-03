@@ -29,6 +29,7 @@ def _scored_restaurants(region, order='asc', limit=5, days=None):
     filters = [
         Restaurant.region == region,
         Inspection.risk_score.isnot(None),
+        Inspection.not_future(),
     ]
     if days is not None:
         cutoff = date.today() - timedelta(days=days)
@@ -155,6 +156,7 @@ def _cuisine_rows(region, cuisine_type, city_name=None, sort='date', page=1, per
             db.and_(
                 Inspection.restaurant_id == Restaurant.id,
                 Inspection.inspection_date == Restaurant.latest_inspection_date,
+                Inspection.not_future(),
             )
         )
         .filter(
@@ -392,7 +394,7 @@ def region_index(region):
         recent_inspections = (
             db.session.query(Inspection, Restaurant)
             .join(Restaurant)
-            .filter(Restaurant.region == region)
+            .filter(Restaurant.region == region, Inspection.not_future())
             .order_by(Inspection.inspection_date.desc())
             .limit(20)
             .all()
@@ -452,6 +454,7 @@ def region_sub(region, path_slug):
                 db.and_(
                     Inspection.restaurant_id == Restaurant.id,
                     Inspection.inspection_date == Restaurant.latest_inspection_date,
+                    Inspection.not_future(),
                 )
             )
             .filter(

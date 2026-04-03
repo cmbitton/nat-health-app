@@ -29,6 +29,7 @@ def search_restaurants(q, region=None, sort='date', page=1, per_page=25):
         .outerjoin(Inspection, db.and_(
             Inspection.restaurant_id == Restaurant.id,
             Inspection.inspection_date == Restaurant.latest_inspection_date,
+            Inspection.not_future(),
         ))
         .filter(
             func.regexp_replace(Restaurant.name, r'[^a-zA-Z0-9 ]', '', 'g').ilike(

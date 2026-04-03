@@ -75,6 +75,7 @@ def render_restaurant(restaurant):
         Inspection.query
         .options(selectinload(Inspection.violations))
         .filter_by(restaurant_id=restaurant.id)
+        .filter(Inspection.not_future())
         .order_by(Inspection.inspection_date.desc())
         .all()
     )

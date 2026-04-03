@@ -1,3 +1,5 @@
+from datetime import date, timedelta
+
 from app.db import db
 
 
@@ -25,6 +27,11 @@ class Inspection(db.Model):
         db.Index('ix_inspections_score', 'score'),
         db.Index('ix_inspections_date_score', 'inspection_date', 'score'),
     )
+
+    @classmethod
+    def not_future(cls):
+        """Filter clause that excludes inspections dated more than 1 day in the future."""
+        return cls.inspection_date <= date.today() + timedelta(days=1)
 
     violations = db.relationship(
         'Violation',
