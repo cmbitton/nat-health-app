@@ -82,7 +82,7 @@ PERMIT_URL = f'{BASE_URL}/Permit/PermitResults/{{}}'
 INSP_URL   = f'{BASE_URL}/Inspection/{{}}/{{}}'
 REGION     = 'maricopa'
 STATE      = 'AZ'
-DELAY      = 0.2   # seconds between requests
+DELAY      = 0.05  # seconds between requests
 
 _HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
@@ -1091,12 +1091,55 @@ def run_rescrape(app, db, Restaurant, Inspection, Violation,
 
 # ── Incremental import ────────────────────────────────────────────────────────
 
+INCREMENTAL_WORKERS = 30
+
+
+def _fetch_new_inspections(permit_id: str, latest_date, cutoff) -> tuple:
+    """
+    Thread worker: fetch a permit page and any new inspection detail pages.
+    Pure HTTP — no DB access. Returns (permit_id, list_of_detail_dicts).
+    """
+    permit_html = _get(PERMIT_URL.format(permit_id))
+    if not permit_html:
+        return permit_id, []
+
+    permit_data = parse_permit_page(permit_html, permit_id)
+    if not permit_data:
+        return permit_id, []
+
+    new_details = []
+    for insp_info in permit_data['inspections']:
+        insp_id   = insp_info['insp_id']
+        insp_date = insp_info['date']
+
+        if not insp_id.upper().startswith('INSP-'):
+            continue
+        if insp_date and latest_date and insp_date <= latest_date:
+            continue
+        if insp_date and insp_date < cutoff:
+            continue
+
+        insp_html = _get(INSP_URL.format(permit_id, insp_id))
+        if not insp_html:
+            continue
+
+        detail = parse_inspection_page(insp_html, permit_id, insp_id)
+        if detail:
+            detail['type'] = insp_info.get('type', 'Routine')
+            if detail.get('grade') is None:
+                detail['grade'] = insp_info.get('grade')
+            new_details.append(detail)
+
+    return permit_id, new_details
+
+
 def run_incremental(days: int, dry_run: bool, app, db, Restaurant, Inspection, Violation):
     """
     For each existing Maricopa restaurant, re-fetch their permit page and
     import any inspections newer than their latest_inspection_date.
+    Uses a thread pool for parallel HTTP fetches; DB writes on main thread only.
     """
-    print(f'=== Maricopa: Incremental (checking {days}-day window) ===')
+    print(f'=== Maricopa: Incremental (checking {days}-day window, {INCREMENTAL_WORKERS} workers) ===')
 
     if dry_run:
         print('[DRY RUN] Would check all existing Maricopa restaurants.')
@@ -1111,58 +1154,28 @@ def run_incremental(days: int, dry_run: bool, app, db, Restaurant, Inspection, V
             .filter(Restaurant.source_id.isnot(None))
             .all()
         )
-        print(f'  Checking {len(restaurants)} restaurants...')
+        total = len(restaurants)
+        print(f'  Checking {total} restaurants...')
+
+        rid_to_restaurant = {r.source_id: r for r in restaurants}
         total_i = 0
+        completed = 0
 
-        for idx, restaurant in enumerate(restaurants):
-            permit_id = restaurant.source_id
-
-            permit_html = _get(PERMIT_URL.format(permit_id))
-            if not permit_html:
-                time.sleep(DELAY)
-                continue
-
-            permit_data = parse_permit_page(permit_html, permit_id)
-            if not permit_data:
-                time.sleep(DELAY)
-                continue
-
-            time.sleep(DELAY)
-
-            latest = restaurant.latest_inspection_date
-            new_details = []
-
-            for insp_info in permit_data['inspections']:
-                insp_id   = insp_info['insp_id']
-                insp_date = insp_info['date']
-
-                if not insp_id.upper().startswith('INSP-'):
-                    continue
-                if insp_date and latest and insp_date <= latest:
-                    continue
-                if insp_date and insp_date < cutoff:
-                    continue
-
-                insp_html = _get(INSP_URL.format(permit_id, insp_id))
-                if not insp_html:
-                    time.sleep(DELAY)
-                    continue
-
-                detail = parse_inspection_page(insp_html, permit_id, insp_id)
-                if detail:
-                    detail['type'] = insp_info.get('type', 'Routine')
-                    if detail.get('grade') is None:
-                        detail['grade'] = insp_info.get('grade')
-                    new_details.append(detail)
-
-                time.sleep(DELAY)
-
-            written = _write_inspections(restaurant, new_details, db, Inspection, Violation)
-            total_i += written
-
-            if (idx + 1) % 100 == 0:
-                db.session.commit()
-                print(f'  [{idx+1}/{len(restaurants)}] {total_i} new inspections so far...')
+        with ThreadPoolExecutor(max_workers=INCREMENTAL_WORKERS) as pool:
+            futures = {
+                pool.submit(_fetch_new_inspections, r.source_id, r.latest_inspection_date, cutoff): r.source_id
+                for r in restaurants
+            }
+            for future in as_completed(futures):
+                permit_id, new_details = future.result()
+                restaurant = rid_to_restaurant[permit_id]
+                if new_details:
+                    written = _write_inspections(restaurant, new_details, db, Inspection, Violation)
+                    total_i += written
+                completed += 1
+                if completed % 500 == 0:
+                    db.session.commit()
+                    print(f'  [{completed}/{total}] {total_i} new inspections so far...')
 
         db.session.commit()
         print(f'\nIncremental complete: {total_i} new inspections written.')
