@@ -269,6 +269,7 @@ FDA_SHORT_TITLES = {
     '5-202.13': 'Backflow prevention air gap not adequate',
     '5-202.14': 'Backflow prevention device does not meet design standard',
     '5-203.11': 'Insufficient number of handwashing sinks',
+    '5-203.14': 'Plumbing not installed to prevent backflow',
     '5-205.11': 'Handwashing sink blocked, inaccessible, or used improperly',
     '5-205.12': 'Cross connection present or not corrected',
     '5-205.15': 'Plumbing system not maintained in good repair',
@@ -325,6 +326,20 @@ FDA_SHORT_TITLES = {
 }
 
 
+# ── Houston City Ordinance codes ──────────────────────────────────────────────
+HOUSTON_CODE_TITLES = {
+    'COH-20-20(b)': 'Operating without meeting city food establishment requirements',
+    'COH-20-20(d)': 'Operations resumed before reinspection clearance',
+    'COH-20-25(a)': 'Construction or remodeling without approved plans',
+    'COH-20-37(b)': 'Mobile food unit operating without valid medallion',
+    'COH-21-244(a)': 'No smoking signs not posted in public place',
+    'COH-21-244(b)': 'No smoking sign missing at entrance',
+    'COH-21-247(b)': 'Smoking not enforced in prohibited area',
+    'COH-47-512(b)': 'Grease interceptor not evacuated at required frequency',
+    'COH-47-522':    'Waste manifest records not properly maintained',
+}
+
+
 def code_short_title(code: str) -> str | None:
     """
     Return a plain-English violation description for an FDA Food Code section number.
@@ -335,9 +350,10 @@ def code_short_title(code: str) -> str | None:
     """
     if not code:
         return None
-    import re as _re
     current = code.strip()
-    # Normalize case of the base code (e.g. '3-501.14(a)' → keep, just strip subitems)
+    if current in HOUSTON_CODE_TITLES:
+        return HOUSTON_CODE_TITLES[current]
+    import re as _re
     for _ in range(6):
         title = FDA_SHORT_TITLES.get(current)
         if title:
