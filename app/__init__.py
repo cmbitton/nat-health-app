@@ -86,10 +86,17 @@ def create_app():
 
     # Register custom Jinja2 filters
     from app.utils import get_region_display
+    import sys as _sys, os as _os
+    _sys.path.insert(0, _os.path.join(_os.path.dirname(__file__), '..', 'scripts'))
+    from fda_codes import code_short_title
 
     @app.template_filter('region_display')
     def region_display_filter(region):
         return get_region_display(region)
+
+    @app.template_filter('fda_title')
+    def fda_title_filter(code):
+        return code_short_title(code)
 
     @app.template_filter('format_date')
     def format_date_filter(value):
