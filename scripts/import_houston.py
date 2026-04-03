@@ -315,6 +315,24 @@ _STREET_SUFFIXES = {
     'N', 'S', 'E', 'W', 'NE', 'NW', 'SE', 'SW',
 }
 
+# Multi-word city names that the single-token parser can't detect; keyed by zip.
+_ZIP_CITY_OVERRIDE = {
+    '77459': 'Missouri City',
+    '77489': 'Missouri City',
+    '77477': 'Stafford',
+    '77478': 'Sugar Land',
+    '77479': 'Sugar Land',
+    '77498': 'Sugar Land',
+    '77338': 'Humble',
+    '77339': 'Kingwood',
+    '77345': 'Kingwood',
+    '77346': 'Humble',
+    '77396': 'Humble',
+    '77546': 'Friendswood',
+    '77598': 'Webster',
+}
+
+
 def parse_address(raw: str):
     """
     '609 W GULF BANK RD HOUSTON TX 77037' → (street, city, state, zip)
@@ -331,6 +349,17 @@ def parse_address(raw: str):
     state  = m.group(1)
     zip5   = m.group(2)
     before = raw[:m.start()].strip()
+
+    if zip5 in _ZIP_CITY_OVERRIDE:
+        city = _ZIP_CITY_OVERRIDE[zip5]
+        city_upper = city.upper()
+        if before.endswith(city_upper):
+            before = before[:-len(city_upper)].strip()
+        else:
+            n_tokens = len(city_upper.split())
+            parts = before.rsplit(None, n_tokens)
+            before = parts[0] if len(parts) > 1 else before
+        return before.title(), city, state, zip5
 
     # Last word before state abbreviation = city, unless it's a street suffix.
     parts = before.rsplit(None, 1)
