@@ -49,7 +49,8 @@ Rules:
 - Do not use words like "pass", "fail", "excellent", "terrible", or make moral judgements
 - Do not speculate about causes of violations
 - Write in third person
-- Use natural prose, not data-report language\
+- Use natural prose, not data-report language
+- Vary your sentence structure and opening words\
 """
 
 DEFAULT_WORKERS   = 50
