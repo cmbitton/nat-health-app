@@ -8,9 +8,6 @@ primary_region = 'ewr'
 
 [build]
 
-[deploy]
-  release_command = 'python3 -c "from app import create_app; from app.db import db; app = create_app(); ctx = app.app_context(); ctx.push(); db.create_all()"'
-
 [http_service]
   internal_port = 8080
   force_https = true
