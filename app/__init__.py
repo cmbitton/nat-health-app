@@ -69,7 +69,10 @@ def create_app():
 
     @app.after_request
     def _req_end(response):
-        elapsed_ms = (time.monotonic() - g._req_start) * 1000
+        start = getattr(g, '_req_start', None)
+        if start is None:
+            return response
+        elapsed_ms = (time.monotonic() - start) * 1000
         db_ms = getattr(g, '_db_time', 0.0) * 1000
         n_queries = getattr(g, '_db_queries', 0)
         level = logging.WARNING if elapsed_ms > 500 else logging.INFO
