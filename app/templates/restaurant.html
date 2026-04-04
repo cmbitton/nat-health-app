@@ -190,10 +190,14 @@
         </a>
         {% endif %}
         {% if restaurant.cuisine_type and cuisine_slug %}
+        {% set region_label = restaurant.region | region_display %}
+        {% set city_matches_region = restaurant.city and restaurant.city.lower() == region_label.lower() %}
+        {% if not city_matches_region %}
         <a href="/{{ restaurant.region }}/{{ cuisine_slug }}/" class="internal-link">
             <span class="internal-link-arrow">→</span>
-            {{ restaurant.cuisine_type }} restaurants in {{ restaurant.region | region_display }}
+            {{ restaurant.cuisine_type }} restaurants in {{ region_label }}
         </a>
+        {% endif %}
         {% if restaurant.city %}
         <a href="/{{ restaurant.region }}/{{ restaurant.city_slug }}/{{ cuisine_slug }}/" class="internal-link">
             <span class="internal-link-arrow">→</span>
