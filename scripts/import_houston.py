@@ -599,46 +599,26 @@ def parse_detail(html: str, facility_id: str) -> dict | None:
 
 # ── Fetching ──────────────────────────────────────────────────────────────────
 
-def fetch_pairs_for_range(from_date: date, to_date: date, maxrows: int = 50):
-    """
-    POST a date-range search, paginate, return (opener, jar, pairs, sd, ed).
-    opener+jar must be reused for subsequent detail-page GETs.
-    """
-    sd = from_date.strftime('%m/%d/%Y')
-    ed = to_date.strftime('%m/%d/%Y')
-    print(f"  Searching Houston portal {sd} – {ed}...")
-
-    opener, jar = _make_opener()
+def _fetch_pairs_one_pass(opener, jar, sd: str, ed: str,
+                          keyword: str = '', maxrows: int = 50) -> list:
+    """Single paginated search pass. Returns list of (facility_id, inspection_id) pairs."""
     post_params = {
-        'q': 's', 'e': '', 'k': '', 'r': '', 'tp': 'ALL',
+        'q': 's', 'e': '', 'k': keyword, 'r': '', 'tp': 'ALL',
         'sd': sd, 'ed': ed, 'z': 'ALL', 'm': 'LIKE',
         'maxrows': str(maxrows), 'Submit': 'Search',
     }
-
     try:
         html = _post(opener, SEARCH_URL, post_params)
     except Exception as exc:
-        print(f"  Initial POST failed: {exc}")
-        return opener, jar, [], sd, ed
+        print(f"  Search POST failed (k={keyword!r}): {exc}")
+        return []
 
-    # Log cookies so we can debug session issues
-    cf = _cf_params(jar)
-    print(f"  Session cookies: {cf}")
-
-    all_pairs = parse_pairs(html)
-    print(f"  Page 1: {len(all_pairs)} pairs.")
-
-    if os.environ.get('HOUSTON_DEBUG_HTML'):
-        with open('/tmp/houston_search.html', 'w') as fh:
-            fh.write(html)
-        print("  Search HTML dumped to /tmp/houston_search.html")
-
-    # Paginate until a page returns fewer than maxrows pairs (portal has no reliable total count)
+    pairs = parse_pairs(html)
     start = maxrows + 1
     while len(parse_pairs(html)) >= maxrows:
         time.sleep(DELAY)
         qs = urllib.parse.urlencode({
-            'start': start, 'Q': 's', 'E': '', 'K': '', 'R': '',
+            'start': start, 'Q': 's', 'E': '', 'K': keyword, 'R': '',
             'TP': 'ALL', 'Z': 'ALL', 'M': 'LIKE', 'MAXROWS': maxrows,
         })
         qs += f'&SD={sd}&ED={ed}'
@@ -650,12 +630,59 @@ def fetch_pairs_for_range(from_date: date, to_date: date, maxrows: int = 50):
         page = parse_pairs(html)
         if not page:
             break
-        all_pairs.extend(page)
+        pairs.extend(page)
         start += maxrows
-        print(f"  {len(all_pairs)} pairs collected...", end='\r')
+    return pairs
+
+
+def fetch_pairs_for_range(from_date: date, to_date: date, maxrows: int = 50):
+    """
+    POST a date-range search, paginate, return (opener, jar, pairs, sd, ed).
+    opener+jar must be reused for subsequent detail-page GETs.
+
+    When the portal cap (500 results) is hit, automatically retries with
+    alphabetical keyword splits (A-M, N-Z) to recover overflow records.
+    """
+    sd = from_date.strftime('%m/%d/%Y')
+    ed = to_date.strftime('%m/%d/%Y')
+    print(f"  Searching Houston portal {sd} – {ed}...")
+
+    opener, jar = _make_opener()
+    cf = _cf_params(jar)
+    print(f"  Session cookies: {cf}")
+
+    if os.environ.get('HOUSTON_DEBUG_HTML'):
+        post_params = {
+            'q': 's', 'e': '', 'k': '', 'r': '', 'tp': 'ALL',
+            'sd': sd, 'ed': ed, 'z': 'ALL', 'm': 'LIKE',
+            'maxrows': str(maxrows), 'Submit': 'Search',
+        }
+        html = _post(opener, SEARCH_URL, post_params)
+        with open('/tmp/houston_search.html', 'w') as fh:
+            fh.write(html)
+        print("  Search HTML dumped to /tmp/houston_search.html")
+
+    all_pairs = _fetch_pairs_one_pass(opener, jar, sd, ed, keyword='', maxrows=maxrows)
+    print(f"  Pass 1 (all): {len(all_pairs)} pairs.")
 
     if len(all_pairs) >= 500:
-        print(f"  WARNING: collected {len(all_pairs)} pairs — portal cap likely hit. Reduce --chunk-days.")
+        # Portal cap hit — recover overflow with alphabetical splits
+        print(f"  Portal cap hit ({len(all_pairs)} pairs). Running alpha splits to recover overflow...")
+        seen = {(p['facility_id'], p['inspection_id']) for p in all_pairs}
+        for keyword in ('a b c d e f g h i j k l m', 'n o p q r s t u v w x y z'):
+            # Search each letter separately and collect unseen pairs
+            for letter in keyword.split():
+                time.sleep(DELAY)
+                extra = _fetch_pairs_one_pass(opener, jar, sd, ed,
+                                              keyword=letter, maxrows=maxrows)
+                new = [p for p in extra
+                       if (p['facility_id'], p['inspection_id']) not in seen]
+                for p in new:
+                    seen.add((p['facility_id'], p['inspection_id']))
+                all_pairs.extend(new)
+                if new:
+                    print(f"    letter={letter!r}: +{len(new)} new pairs ({len(all_pairs)} total)")
+
     print(f"\n  Collected {len(all_pairs)} (facility, inspection) pairs.")
     return opener, jar, all_pairs, sd, ed
 
