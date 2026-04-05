@@ -1427,8 +1427,9 @@ nav {
     height: 300px;
 }
 .insights-chart-wrap--donut {
-    max-height: 220px;
-    max-width: 220px;
+    height: 220px;
+    width: 220px;
+    flex-shrink: 0;
 }
 .insights-chart-wrap--cuisine {
     height: 340px;
@@ -1660,9 +1661,8 @@ nav {
         gap: 16px;
     }
     .insights-chart-wrap--donut {
-        max-width: 180px;
-        max-height: none;
-        flex-shrink: 0;
+        width: 180px;
+        height: 180px;
     }
     .insights-tier-stats {
         flex-direction: column;
@@ -1751,7 +1751,8 @@ nav {
         align-items: center;
     }
     .insights-chart-wrap--donut {
-        max-width: 200px;
+        width: 200px;
+        height: 200px;
         align-self: center;
     }
     .insights-tier-stats {
