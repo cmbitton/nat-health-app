@@ -569,11 +569,10 @@ def run_import(sources: list[tuple[str, str]], dry_run: bool, skip_portal: bool,
             for r in Restaurant.query.filter_by(region=REGION)
                                      .filter(Restaurant.source_id.isnot(None)).all()
         }
-        seen_slugs = {r.slug for r in existing.values()}
-        seen_slugs |= {
-            r.slug for r in
-            Restaurant.query.filter(Restaurant.region != REGION)
-                            .with_entities(Restaurant.slug).all()
+        seen_slugs = {
+            row[0] for row in db.session.execute(
+                db.text('SELECT slug FROM restaurants WHERE slug IS NOT NULL')
+            ).fetchall()
         }
 
         # Load all known FL inspection IDs once for dedup
