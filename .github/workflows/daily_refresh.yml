@@ -14,10 +14,20 @@ jobs:
       - name: Install flyctl
         uses: superfly/flyctl-actions/setup-flyctl@master
 
-      # ── Run all DB scripts in a single SSH connection ──────────────────────
-      # DATABASE_URL, SECRET_KEY, and GEMINI_API_KEY are set as Fly secrets
-      # and are available inside the container automatically.
+      # ── Run all DB scripts on an ephemeral machine ─────────────────────────
+      # flyctl machine run spins up a separate VM from the same image,
+      # runs the command, then destroys it — the web server is unaffected.
+      # DATABASE_URL, SECRET_KEY, and GEMINI_API_KEY are Fly secrets and are
+      # automatically available inside the container.
       - name: Daily data refresh
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-        run: flyctl ssh console -a forkgrade -C "bash -c 'python3 -u scripts/import_ri.py --days=5 && python3 -u scripts/import_nyc.py --days=3 && python3 -u scripts/import_houston.py --days=5 --chunk-days=0 && python3 -u scripts/import_maricopa.py && python3 -u scripts/import_philadelphia.py --days=5 && python3 -u scripts/import_florida.py && python3 -u scripts/generate_summaries.py --limit 5000 && python3 -u scripts/precompute_insights.py'"
+        run: |
+          flyctl machine run registry.fly.io/forkgrade:latest \
+            --app forkgrade \
+            --region ewr \
+            --vm-size shared-cpu-2x \
+            --vm-memory 2048 \
+            --restart no \
+            --rm \
+            -- bash -c 'python3 -u scripts/import_ri.py --days=5 && python3 -u scripts/import_nyc.py --days=3 && python3 -u scripts/import_houston.py --days=5 --chunk-days=0 && python3 -u scripts/import_maricopa.py && python3 -u scripts/import_philadelphia.py --days=5 && python3 -u scripts/import_florida.py && python3 -u scripts/generate_summaries.py --limit 5000 && python3 -u scripts/precompute_insights.py'
