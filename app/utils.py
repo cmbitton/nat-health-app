@@ -22,7 +22,7 @@ REGION_INFO = {
         'aliases': ['Houston TX', 'HTX'],
     },
     'maricopa': {
-        'display': 'Maricopa County',
+        'display': 'Maricopa',
         'state_abbr': 'AZ',
         'aliases': ['Phoenix', 'AZ', 'Arizona', 'PHX', 'Scottsdale', 'Tempe', 'Mesa', 'Chandler', 'Gilbert', 'Glendale'],
     },
