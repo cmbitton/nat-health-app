@@ -430,6 +430,7 @@ def write_chunk(records: list[dict], dry_run: bool,
             score           = score,
             risk_score      = risk,
             result          = score_to_result(score),
+            region          = 'philadelphia',
         )
         db.session.add(insp)
         db.session.flush()

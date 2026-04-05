@@ -5,7 +5,7 @@ from sqlalchemy.orm import selectinload
 from app.db import db, cache
 from app.models.restaurant import Restaurant
 from app.models.inspection import Inspection
-from app.utils import get_region_display
+from app.utils import get_region_display, get_region_aliases
 
 
 def _cuisine_slug(label: str) -> str:
@@ -119,6 +119,12 @@ def render_restaurant(restaurant):
     local_biz = {
         "@type": "Restaurant",
         "name": restaurant.name,
+        "areaServed": {
+            "@type": "AdministrativeArea",
+            "name": get_region_display(restaurant.region),
+            **({"alternateName": get_region_aliases(restaurant.region)}
+               if get_region_aliases(restaurant.region) else {}),
+        },
         "address": {
             "@type": "PostalAddress",
             "streetAddress": restaurant.address or '',
@@ -185,7 +191,6 @@ def render_restaurant(restaurant):
     _tier_labels = {'low': 'Low Risk', 'medium': 'Medium Risk', 'high': 'High Risk'}
     score = latest_inspection.score if latest_inspection else None
     tier_label = _tier_labels.get(restaurant.score_tier, '')
-
     if score is not None and tier_label:
         description = (
             f"{restaurant.display_name} health inspection score: {score} out of 100 ({tier_label}). "

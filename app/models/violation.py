@@ -18,6 +18,8 @@ class Violation(db.Model):
 
     __table_args__ = (
         db.Index('ix_violations_inspection_id', 'inspection_id'),
+        db.Index('ix_violations_inspection_severity', 'inspection_id', 'severity'),
+        db.Index('ix_violations_inspection_code', 'inspection_id', 'violation_code'),
     )
 
     def __repr__(self):

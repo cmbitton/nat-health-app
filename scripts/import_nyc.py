@@ -413,6 +413,7 @@ def write_to_db(restaurants, inspections, app, db, Restaurant, Inspection, Viola
                     grade           = grade,
                     result          = _grade_to_result(grade, risk),
                     inspection_type = idata['type'] or 'Routine',
+                    region          = 'nyc',
                 )
                 db.session.add(insp)
                 db.session.flush()

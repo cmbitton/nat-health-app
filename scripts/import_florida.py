@@ -528,6 +528,7 @@ def write_batch(records: list[dict], dry_run: bool,
             score           = score,
             risk_score      = risk,
             result          = _result(score),
+            region          = 'florida',
         )
         db.session.add(insp)
         db.session.flush()

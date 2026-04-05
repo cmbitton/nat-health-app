@@ -815,6 +815,7 @@ def write_to_db(records: list, app, db, Restaurant, Inspection, Violation):
                 grade           = None,
                 result          = score_to_result(score),
                 inspection_type = rec.get('type') or 'Routine',
+                region          = 'houston',
             )
             db.session.add(insp)
             db.session.flush()

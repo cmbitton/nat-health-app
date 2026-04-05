@@ -1,0 +1,461 @@
+{% extends 'base.html' %}
+{% from 'components/breadcrumb.html' import render_breadcrumb %}
+
+{% block extra_head %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js" defer></script>
+{% endblock %}
+
+{% block breadcrumb %}
+{{ render_breadcrumb(breadcrumbs) }}
+{% endblock %}
+
+{% block content %}
+<div class="container">
+
+    <!-- HEADER -->
+    <div class="insights-header">
+        <h1>Health Inspection Insights: {{ region_display }}</h1>
+        <p class="insights-subtitle">Analyzing {{ '{:,}'.format(data.total_locations) }}+ locations and {{ '{:,}'.format(data.total_inspections) }} inspections</p>
+        {% if data.date_first and data.date_last %}
+        <p class="insights-date-range">Data from {{ data.date_first }} through {{ data.date_last }}</p>
+        {% endif %}
+    </div>
+
+    <!-- STAT ROW -->
+    <div class="stat-row">
+        <div class="stat-card">
+            <div class="stat-value {% if data.avg_score is not none %}{% if data.avg_score >= 75 %}green{% elif data.avg_score >= 55 %}yellow{% else %}red{% endif %}{% endif %}">
+                {{ data.avg_score if data.avg_score is not none else 'N/A' }}
+            </div>
+            <div class="stat-name">Avg Score</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value red">{{ data.tier_pcts.high }}%</div>
+            <div class="stat-name">High Risk Rate</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">{{ '{:,}'.format(data.total_violations) }}</div>
+            <div class="stat-name">Total Violations</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value {% if most_common_sev == 'critical' %}red{% elif most_common_sev == 'major' %}yellow{% else %}green{% endif %}">
+                {{ most_common_sev | title }}
+            </div>
+            <div class="stat-name">Top Severity</div>
+        </div>
+    </div>
+
+    <!-- SCORE DISTRIBUTION -->
+    <div class="insights-card">
+        <div class="insights-card-title">Score Distribution</div>
+        <div class="insights-chart-wrap">
+            <canvas id="score-hist-chart"></canvas>
+        </div>
+        <p class="insights-chart-note">Scores 0–100. Low Risk ≥75 · Medium Risk 55–74 · High Risk &lt;55</p>
+    </div>
+
+    <!-- RISK TIER BREAKDOWN -->
+    <div class="insights-card">
+        <div class="insights-card-title">Risk Overview</div>
+        <div class="insights-tier-row">
+            <div class="insights-chart-wrap insights-chart-wrap--donut">
+                <canvas id="tier-donut-chart"></canvas>
+            </div>
+            <div class="insights-tier-stats">
+                <div class="insights-tier-block insights-tier-block--low">
+                    <div class="insights-tier-count">{{ '{:,}'.format(data.tier_counts.low) }}</div>
+                    <div class="insights-tier-pct">{{ data.tier_pcts.low }}%</div>
+                    <div class="insights-tier-label">Low Risk</div>
+                </div>
+                <div class="insights-tier-block insights-tier-block--medium">
+                    <div class="insights-tier-count">{{ '{:,}'.format(data.tier_counts.medium) }}</div>
+                    <div class="insights-tier-pct">{{ data.tier_pcts.medium }}%</div>
+                    <div class="insights-tier-label">Medium Risk</div>
+                </div>
+                <div class="insights-tier-block insights-tier-block--high">
+                    <div class="insights-tier-count">{{ '{:,}'.format(data.tier_counts.high) }}</div>
+                    <div class="insights-tier-pct">{{ data.tier_pcts.high }}%</div>
+                    <div class="insights-tier-label">High Risk</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- INSPECTION TRENDS -->
+    {% if data.monthly_trends | length >= 2 %}
+    <div class="insights-card">
+        <div class="insights-card-title">Inspection Trends <span class="insights-card-sub">Last 24 Months</span></div>
+        <div class="insights-chart-wrap">
+            <canvas id="trends-chart"></canvas>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- TOP VIOLATIONS -->
+    {% if data.top_violations %}
+    <div class="insights-card">
+        <div class="insights-card-title">Most Common Violations</div>
+        {% set max_count = data.top_violations[0].count if data.top_violations[0].count > 0 else 1 %}
+        <div class="insights-violation-list">
+            {% for v in data.top_violations %}
+            <div class="insights-violation-item">
+                <div class="insights-violation-rank">{{ loop.index }}</div>
+                <div class="insights-violation-body">
+                    <div class="insights-violation-desc" title="{{ v.description }}">
+                        {{ v.description[:100] }}{% if v.description | length > 100 %}…{% endif %}
+                    </div>
+                    <div class="insights-violation-meta">
+                        <span class="insights-violation-sev insights-violation-sev--{{ v.severity }}">{{ v.severity }}</span>
+                        <span class="insights-violation-count">{{ '{:,}'.format(v.count) }} occurrences</span>
+                        <span class="insights-violation-pct">{{ v.pct }}% of inspections</span>
+                    </div>
+                    <div class="insights-violation-bar-wrap">
+                        <div class="insights-violation-bar insights-violation-bar--{{ v.severity }}"
+                             style="width: {{ ((v.count / max_count) * 100) | int }}%"></div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- NEIGHBORHOOD ANALYSIS -->
+    {% if data.worst_cities|length >= 2 and data.best_cities|length >= 2 %}
+    <div class="insights-card">
+        <div class="insights-card-title">
+            {% if data.neighborhood_by_zip %}By Neighborhood{% else %}Neighborhood Breakdown{% endif %}
+            <span class="insights-card-sub">min. 10 locations</span>
+        </div>
+        <div class="insights-neighborhood-cols">
+            <div class="insights-neighborhood-col insights-neighborhood-col--risk">
+                <div class="insights-col-header">Highest Risk Areas</div>
+                {% for city in data.worst_cities %}
+                <div class="insights-neighborhood-item">
+                    {% if city.city_slug %}
+                    <a href="/{{ region }}/{{ city.city_slug }}/" class="insights-city-link">{{ city.city }}</a>
+                    {% else %}
+                    <span class="insights-city-link">{{ city.city }}{% if city.zip and city.zip != city.city %} <code class="insights-zip">{{ city.zip }}</code>{% endif %}</span>
+                    {% endif %}
+                    <div class="insights-city-stats">
+                        <span class="insights-city-badge insights-city-badge--high">{{ city.pct_high }}% high risk</span>
+                        <span class="insights-city-total">{{ city.total }} locations</span>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            <div class="insights-neighborhood-col insights-neighborhood-col--clean">
+                <div class="insights-col-header">Cleanest Areas</div>
+                {% for city in data.best_cities %}
+                <div class="insights-neighborhood-item">
+                    {% if city.city_slug %}
+                    <a href="/{{ region }}/{{ city.city_slug }}/" class="insights-city-link">{{ city.city }}</a>
+                    {% else %}
+                    <span class="insights-city-link">{{ city.city }}{% if city.zip and city.zip != city.city %} <code class="insights-zip">{{ city.zip }}</code>{% endif %}</span>
+                    {% endif %}
+                    <div class="insights-city-stats">
+                        <span class="insights-city-badge insights-city-badge--low">Avg {{ city.avg_score }}</span>
+                        <span class="insights-city-total">{{ city.total }} locations</span>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- CUISINE RISK -->
+    {% if data.cuisine_risk %}
+    <div class="insights-card">
+        <div class="insights-card-title">Average Score by Cuisine Type <span class="insights-card-sub">min. 50 locations</span></div>
+        <div class="insights-chart-wrap insights-chart-wrap--cuisine">
+            <canvas id="cuisine-chart"></canvas>
+        </div>
+    </div>
+    {% endif %}
+
+</div>
+{% endblock %}
+
+{% block structured_data %}
+<script type="application/ld+json">
+{
+    "@context": "https://schema.org",
+    "@type": "Dataset",
+    "name": "Health Inspection Insights: {{ region_display }}",
+    "description": {{ description | tojson }},
+    "url": {{ canonical_url | tojson }}{% if breadcrumbs[1] is defined %},
+    "spatialCoverage": {
+        "@type": "AdministrativeArea",
+        "name": {{ region_display | tojson }}
+    }{% endif %}
+}
+</script>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var insightsData = {{ data | tojson }};
+
+    var GREEN  = '#2D5F2E';
+    var YELLOW = '#B8860B';
+    var RED    = '#9B2C2C';
+    var MUTED  = '#9C9890';
+    var FONT   = "'DM Sans', sans-serif";
+    var MONO   = "'DM Mono', monospace";
+
+    Chart.defaults.font.family = FONT;
+    Chart.defaults.color = '#6B6962';
+
+    function tierColor(score) {
+        if (score === null || score === undefined) return MUTED;
+        if (score >= 75) return GREEN;
+        if (score >= 55) return YELLOW;
+        return RED;
+    }
+
+    function bucketColor(start) {
+        if (start >= 75) return GREEN;
+        if (start >= 55) return YELLOW;
+        return RED;
+    }
+
+    // ── Score Distribution ──────────────────────────────────────────────────
+    var histEl = document.getElementById('score-hist-chart');
+    if (histEl && insightsData.score_histogram) {
+        var hist = insightsData.score_histogram.slice().reverse();
+        new Chart(histEl, {
+            type: 'bar',
+            data: {
+                labels: hist.map(function(d) { return d.label; }),
+                datasets: [{
+                    data: hist.map(function(d) { return d.count; }),
+                    backgroundColor: hist.map(function(d) { return bucketColor(d.start); }),
+                    borderRadius: 3,
+                    borderSkipped: false,
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function(ctx) {
+                                return ' ' + ctx.parsed.x.toLocaleString() + ' restaurants';
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: { color: 'rgba(0,0,0,0.04)' },
+                        ticks: { font: { family: FONT } }
+                    },
+                    y: {
+                        grid: { display: false },
+                        ticks: { font: { family: MONO, size: 12 } }
+                    }
+                }
+            }
+        });
+    }
+
+    // ── Risk Tier Donut ─────────────────────────────────────────────────────
+    var donutEl = document.getElementById('tier-donut-chart');
+    if (donutEl && insightsData.tier_counts) {
+        var tc = insightsData.tier_counts;
+        var tp = insightsData.tier_pcts;
+        new Chart(donutEl, {
+            type: 'doughnut',
+            data: {
+                labels: ['Low Risk', 'Medium Risk', 'High Risk'],
+                datasets: [{
+                    data: [tc.low, tc.medium, tc.high],
+                    backgroundColor: [GREEN, YELLOW, RED],
+                    borderWidth: 3,
+                    borderColor: '#FFFFFF',
+                    hoverOffset: 8,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                cutout: '68%',
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: { padding: 16, font: { family: FONT }, boxWidth: 14 }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(ctx) {
+                                var keys = ['low', 'medium', 'high'];
+                                var pct = tp[keys[ctx.dataIndex]];
+                                return ' ' + ctx.parsed.toLocaleString() + ' (' + pct + '%)';
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // ── Inspection Trends (mixed bar + line) ────────────────────────────────
+    var trendsEl = document.getElementById('trends-chart');
+    if (trendsEl && insightsData.monthly_trends && insightsData.monthly_trends.length >= 2) {
+        var trends = insightsData.monthly_trends;
+        var tLabels = trends.map(function(d) {
+            var p = d.month.split('-');
+            var dt = new Date(parseInt(p[0]), parseInt(p[1]) - 1);
+            return dt.toLocaleDateString('en-US', { month: 'short' }) + " '" + p[0].slice(2);
+        });
+        new Chart(trendsEl, {
+            type: 'bar',
+            data: {
+                labels: tLabels,
+                datasets: [
+                    {
+                        type: 'bar',
+                        label: 'Inspections',
+                        data: trends.map(function(d) { return d.count; }),
+                        backgroundColor: 'rgba(45,95,46,0.45)',
+                        borderColor: GREEN,
+                        borderWidth: 1,
+                        borderRadius: 3,
+                        yAxisID: 'y',
+                    },
+                    {
+                        type: 'line',
+                        label: 'Avg Score',
+                        data: trends.map(function(d) { return d.avg_score; }),
+                        borderColor: RED,
+                        backgroundColor: 'transparent',
+                        pointBackgroundColor: RED,
+                        pointRadius: 3,
+                        pointHoverRadius: 5,
+                        tension: 0.3,
+                        yAxisID: 'y1',
+                        spanGaps: true,
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                interaction: { mode: 'index' },
+                plugins: {
+                    legend: {
+                        position: 'top',
+                        labels: { font: { family: FONT }, boxWidth: 14, padding: 16 }
+                    }
+                },
+                scales: {
+                    y: {
+                        position: 'left',
+                        grid: { color: 'rgba(0,0,0,0.04)' },
+                        title: { display: true, text: 'Inspections', font: { family: FONT, size: 11 } },
+                    },
+                    y1: {
+                        position: 'right',
+                        min: 0,
+                        max: 100,
+                        grid: { drawOnChartArea: false },
+                        title: { display: true, text: 'Avg Score', font: { family: FONT, size: 11 } },
+                    },
+                    x: {
+                        grid: { display: false },
+                        ticks: {
+                            font: { family: FONT, size: 11 },
+                            callback: function(val, idx) {
+                                return idx % 3 === 0 ? this.getLabelForValue(val) : null;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // ── Cuisine Risk ────────────────────────────────────────────────────────
+    var cuisineEl = document.getElementById('cuisine-chart');
+    if (cuisineEl && insightsData.cuisine_risk && insightsData.cuisine_risk.length > 0) {
+        // Reverse so worst (lowest score) appears at top
+        var cr = insightsData.cuisine_risk.slice().reverse();
+
+        // Inline plugin: draw score value just past the end of each bar
+        var scoreLabelPlugin = {
+            id: 'scoreLabels',
+            afterDraw: function(chart) {
+                var ctx = chart.ctx;
+                var meta = chart.getDatasetMeta(0);
+                ctx.save();
+                ctx.font = "500 11px 'DM Mono', monospace";
+                ctx.fillStyle = '#6B6962';
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'middle';
+                meta.data.forEach(function(bar, i) {
+                    var val = chart.data.datasets[0].data[i];
+                    if (val !== null && val !== undefined) {
+                        ctx.fillText(val, bar.x + 5, bar.y);
+                    }
+                });
+                ctx.restore();
+            }
+        };
+
+        new Chart(cuisineEl, {
+            type: 'bar',
+            plugins: [scoreLabelPlugin],
+            data: {
+                labels: cr.map(function(d) {
+                    return d.cuisine + ' (' + d.total.toLocaleString() + ')';
+                }),
+                datasets: [{
+                    data: cr.map(function(d) { return d.avg_score; }),
+                    backgroundColor: cr.map(function(d) { return tierColor(d.avg_score); }),
+                    borderRadius: 3,
+                    borderSkipped: false,
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                layout: { padding: { right: 40 } },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function(ctx) {
+                                var d = cr[ctx.dataIndex];
+                                return [
+                                    ' Avg score: ' + ctx.parsed.x,
+                                    ' High risk: ' + d.pct_high + '%',
+                                    ' Locations: ' + d.total.toLocaleString(),
+                                ];
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        min: 40,
+                        max: 100,
+                        grid: { color: 'rgba(0,0,0,0.04)' },
+                        ticks: { font: { family: FONT } }
+                    },
+                    y: {
+                        grid: { display: false },
+                        ticks: { font: { family: FONT, size: 12 } }
+                    }
+                }
+            }
+        });
+    }
+});
+</script>
+{% endblock %}

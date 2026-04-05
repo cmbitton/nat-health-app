@@ -316,6 +316,7 @@ def import_inspections(restaurant_id, source_id, since_date=None):
             risk_score      = risk,
             grade           = None,
             result          = score_to_result(score),
+            region          = 'rhode-island',
         )
         db.session.add(insp)
         db.session.flush()

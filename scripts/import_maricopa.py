@@ -634,6 +634,7 @@ def _write_inspections(restaurant, new_insp_list, db, Inspection, Violation):
             risk_score      = risk,
             grade           = grade,
             result          = score_to_result(score),
+            region          = 'maricopa',
         )
         db.session.add(insp)
         db.session.flush()
@@ -860,6 +861,7 @@ def _rescrape_inspections(restaurant, new_insp_list, db, Inspection, Violation):
                 risk_score      = risk,
                 grade           = grade,
                 result          = score_to_result(score),
+                region          = 'maricopa',
             )
             db.session.add(insp)
             db.session.flush()

@@ -19,6 +19,7 @@ class Inspection(db.Model):
     grade = db.Column(db.String(5), nullable=True)
     result = db.Column(db.String(100))
     inspection_type = db.Column(db.String(100))
+    region = db.Column(db.String(100), nullable=True)
 
     __table_args__ = (
         db.Index('ix_inspections_restaurant_id', 'restaurant_id'),
@@ -26,6 +27,8 @@ class Inspection(db.Model):
         db.Index('ix_inspections_date', 'inspection_date'),
         db.Index('ix_inspections_score', 'score'),
         db.Index('ix_inspections_date_score', 'inspection_date', 'score'),
+        db.Index('ix_inspections_region', 'region'),
+        db.Index('ix_inspections_region_date', 'region', 'inspection_date'),
     )
 
     @classmethod

@@ -15,6 +15,9 @@
 
     <div class="region-header">
         <h1>Restaurant Health Inspections in {{ region_display }}</h1>
+        {% if aliases %}
+        <span class="sr-only">Also known as: {{ aliases | join(', ') }}</span>
+        {% endif %}
         <div class="region-stats">
             <div class="region-stat">
                 <strong>{{ total_restaurants }}</strong>
@@ -25,6 +28,7 @@
                 Inspections
             </div>
         </div>
+        <a href="/{{ region }}/insights/" class="insights-cta-link">View Insights →</a>
     </div>
 
     <div style="margin-bottom: 24px;">

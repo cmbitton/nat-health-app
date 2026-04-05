@@ -1370,3 +1370,297 @@ nav {
     color: var(--text-secondary);
     z-index: 1001;
 }
+
+/* ── Insights Page ─────────────────────────────────────────────────────────── */
+.insights-header {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 28px 32px;
+    margin-bottom: 20px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+.insights-header h1 {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0 0 6px;
+}
+.insights-subtitle {
+    font-size: 15px;
+    color: var(--text-secondary);
+    margin: 0 0 4px;
+}
+.insights-date-range {
+    font-size: 13px;
+    color: var(--text-muted);
+    font-family: 'DM Mono', monospace;
+    margin: 0;
+}
+
+.insights-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px 28px;
+    margin-bottom: 20px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+.insights-card-title {
+    font-size: 17px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 18px;
+}
+.insights-card-sub {
+    font-size: 12px;
+    font-weight: 400;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    margin-left: 8px;
+}
+
+/* Chart wrappers */
+.insights-chart-wrap {
+    position: relative;
+    max-height: 300px;
+}
+.insights-chart-wrap--donut {
+    max-height: 220px;
+    max-width: 220px;
+}
+.insights-chart-wrap--cuisine {
+    height: 340px;
+    max-height: none;
+}
+.insights-chart-note {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin: 10px 0 0;
+    font-style: italic;
+}
+
+/* Risk tier row: donut + stat blocks side by side */
+.insights-tier-row {
+    display: flex;
+    align-items: center;
+    gap: 36px;
+}
+.insights-tier-stats {
+    display: flex;
+    gap: 20px;
+    flex: 1;
+}
+.insights-tier-block {
+    flex: 1;
+    padding: 16px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    text-align: center;
+}
+.insights-tier-block--low  { border-left: 4px solid var(--tier-low); }
+.insights-tier-block--medium { border-left: 4px solid #B8860B; }
+.insights-tier-block--high { border-left: 4px solid var(--tier-high); }
+.insights-tier-count {
+    font-family: 'DM Mono', monospace;
+    font-size: 20px;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+.insights-tier-pct {
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin: 2px 0 4px;
+}
+.insights-tier-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+}
+
+/* Violation list */
+.insights-violation-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+.insights-violation-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+}
+.insights-violation-item:last-child {
+    border-bottom: none;
+}
+.insights-violation-rank {
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-muted);
+    min-width: 22px;
+    padding-top: 2px;
+    text-align: right;
+}
+.insights-violation-body {
+    flex: 1;
+    min-width: 0;
+}
+.insights-violation-desc {
+    font-size: 14px;
+    color: var(--text-primary);
+    margin-bottom: 5px;
+    line-height: 1.4;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.insights-violation-meta {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 6px;
+    flex-wrap: wrap;
+}
+.insights-violation-sev {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    padding: 2px 7px;
+    border-radius: 4px;
+}
+.insights-violation-sev--critical { background: #fdecea; color: var(--tier-high); }
+.insights-violation-sev--major    { background: #fef9e6; color: #7a5c00; }
+.insights-violation-sev--minor    { background: #e6f4e6; color: var(--tier-low); }
+.insights-violation-count,
+.insights-violation-pct {
+    font-size: 12px;
+    color: var(--text-secondary);
+    font-family: 'DM Mono', monospace;
+}
+.insights-violation-bar-wrap {
+    height: 5px;
+    background: var(--bg);
+    border-radius: 3px;
+    overflow: hidden;
+}
+.insights-violation-bar {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.3s ease;
+}
+.insights-violation-bar--critical { background: var(--tier-high); }
+.insights-violation-bar--major    { background: #B8860B; }
+.insights-violation-bar--minor    { background: var(--tier-low); }
+
+/* Neighborhood two-column layout */
+.insights-neighborhood-cols {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+}
+.insights-col-header {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    padding-bottom: 10px;
+    border-bottom: 2px solid var(--border);
+    margin-bottom: 4px;
+}
+.insights-neighborhood-col--risk .insights-col-header { color: var(--tier-high); border-color: var(--tier-high); }
+.insights-neighborhood-col--clean .insights-col-header { color: var(--tier-low); border-color: var(--tier-low); }
+.insights-neighborhood-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 9px 0;
+    border-bottom: 1px solid var(--border);
+    gap: 8px;
+}
+.insights-neighborhood-item:last-child { border-bottom: none; }
+.insights-city-link {
+    font-size: 14px;
+    color: var(--text-primary);
+    text-decoration: none;
+    font-weight: 500;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.insights-city-link:hover { color: var(--accent); }
+.insights-zip {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--text-muted);
+    background: none;
+    padding: 0;
+    font-weight: 400;
+}
+.insights-city-stats {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+.insights-city-badge {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-weight: 500;
+}
+.insights-city-badge--high { background: #fdecea; color: var(--tier-high); }
+.insights-city-badge--low  { background: #e6f4e6; color: var(--tier-low); }
+.insights-city-total {
+    font-size: 12px;
+    color: var(--text-muted);
+    font-family: 'DM Mono', monospace;
+}
+
+/* Region page — insights CTA link */
+.insights-cta-link {
+    display: inline-block;
+    margin-top: 10px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 6px 14px;
+    text-decoration: none;
+    transition: background 0.15s, color 0.15s;
+}
+.insights-cta-link:hover {
+    background: var(--text-primary);
+    color: #fff;
+    border-color: var(--text-primary);
+}
+
+/* Responsive */
+@media (max-width: 600px) {
+    .insights-header { padding: 20px 18px; }
+    .insights-card   { padding: 18px 16px; }
+    .insights-tier-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 20px;
+    }
+    .insights-chart-wrap--donut { max-width: 100%; }
+    .insights-tier-stats { width: 100%; }
+    .insights-neighborhood-cols {
+        grid-template-columns: 1fr;
+    }
+    .insights-violation-desc {
+        white-space: normal;
+    }
+}

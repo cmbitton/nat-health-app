@@ -13,7 +13,7 @@ from app.db import db, cache
 from app.models.restaurant import Restaurant
 from app.models.inspection import Inspection
 from app.routes.restaurant import render_restaurant
-from app.utils import get_region_display, search_restaurants
+from app.utils import get_region_display, get_region_aliases, region_location, search_restaurants
 
 region_bp = Blueprint('region', __name__)
 
@@ -283,10 +283,12 @@ def render_neighborhood(region, city_slug_str, city_name, restaurants_with_score
     if total is None:
         total = len(restaurants_with_scores)
     total_pages = max(1, (total + per_page - 1) // per_page)
+    from app.utils import get_region_state_abbr as _state_abbr
+    _loc = f'{city_name}, {_state_abbr(region)}' if _state_abbr(region) else f'{city_name}, {region_display}'
     return render_template(
         'neighborhood.html',
         title         = f'Restaurant Health Inspections in {city_name}, {region_display} — Scores & Rankings | {site_name}',
-        description   = f'Restaurant health inspection scores in {city_name}, {region_display}. Search {total}+ facilities with violation history, scores, and risk tiers.',
+        description   = f'Restaurant health inspection scores in {_loc}. Search {total}+ facilities with violation history, scores, and risk tiers.',
         canonical_url = f'{base_url}/{region}/{city_slug_str}/',
         region        = region,
         region_display= region_display,
@@ -315,6 +317,7 @@ def region_index(region):
 
     cache_key = f'region_index_{region}'
 
+    aliases = get_region_aliases(region)
     if q:
         # Use cached count if warm; otherwise a fast index-only count
         cached_for_count = cache.get(cache_key)
@@ -331,7 +334,7 @@ def region_index(region):
         return render_template(
             'region.html',
             title          = f'Health Inspections in {region_display} | {site_name}',
-            description    = f'Search health inspection scores in {region_display}.',
+            description    = f'Search health inspection scores in {region_location(region)}.',
             canonical_url  = f'{base_url}/{region}/',
             region         = region,
             region_display = region_display,
@@ -350,6 +353,7 @@ def region_index(region):
             top_restaurants     = [],
             bottom_restaurants  = [],
             cuisine_types       = [],
+            aliases             = aliases,
         )
     cached = cache.get(cache_key)
     if cached:
@@ -417,7 +421,7 @@ def region_index(region):
     return render_template(
         'region.html',
         title          = f'Restaurant Health Inspections in {region_display} — Scores & Violations | {site_name}',
-        description    = f'Search {count}+ restaurant health inspections in {region_display}. Scores, violations, and risk tiers for every inspected food establishment.',
+        description    = f'Search {count:,}+ restaurant health inspection scores in {region_location(region)}. Violations, risk tiers, and inspection history for every food establishment.',
         canonical_url  = f'{base_url}/{region}/',
         region         = region,
         region_display = region_display,
@@ -431,6 +435,38 @@ def region_index(region):
         top_restaurants    = [],
         bottom_restaurants = bottom_restaurants,
         cuisine_types      = cuisine_types,
+        aliases            = aliases,
+    )
+
+
+@region_bp.route('/<region>/insights/')
+def region_insights(region):
+    from app.models.region_stats import RegionStats
+
+    stats = db.session.get(RegionStats, region)
+    if not stats:
+        abort(404)
+    data = stats.data
+
+    sc = data['severity_counts']
+    most_common_sev = max(sc, key=sc.get) if any(sc.values()) else 'minor'
+
+    return render_template(
+        'insights.html',
+        title          = f'Health Inspection Insights: {region_display} | {site_name}',
+        description    = (f'Explore health inspection trends, risk patterns, and violation data '
+                          f'across {data["total_locations"]:,}+ food establishments in '
+                          f'{region_location(region)}.'),
+        canonical_url  = f'{base_url}/{region}/insights/',
+        region         = region,
+        region_display = region_display,
+        breadcrumbs    = [
+            {'name': 'Home',         'url': '/'},
+            {'name': region_display, 'url': f'/{region}/'},
+            {'name': 'Insights'},
+        ],
+        data            = data,
+        most_common_sev = most_common_sev,
     )
 
 
