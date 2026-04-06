@@ -121,8 +121,11 @@ def _get_cuisine_types(region):
     min_count = _cuisine_min_count(region_size)
     rows = (
         db.session.query(Restaurant.cuisine_type, func.count(Restaurant.id))
-        .join(Inspection, Restaurant.id == Inspection.restaurant_id)
-        .filter(Restaurant.region == region, Restaurant.cuisine_type.isnot(None))
+        .filter(
+            Restaurant.region == region,
+            Restaurant.cuisine_type.isnot(None),
+            Restaurant.latest_inspection_date.isnot(None),
+        )
         .group_by(Restaurant.cuisine_type)
         .having(func.count(Restaurant.id) >= min_count)
         .all()
@@ -363,18 +366,22 @@ def region_index(region):
         count = (
             Restaurant.query
             .filter_by(region=region)
-            .filter(Restaurant.inspections.any())
+            .filter(Restaurant.latest_inspection_date.isnot(None))
             .count()
         )
         if count == 0:
             abort(404)
 
-        total_inspections = (
-            db.session.query(func.count(Inspection.id))
-            .join(Restaurant)
-            .filter(Restaurant.region == region)
-            .scalar()
-        )
+        insp_cache_key = f'total_inspections_{region}'
+        total_inspections = cache.get(insp_cache_key)
+        if total_inspections is None:
+            total_inspections = (
+                db.session.query(func.count(Inspection.id))
+                .join(Restaurant)
+                .filter(Restaurant.region == region)
+                .scalar()
+            )
+            cache.set(insp_cache_key, total_inspections, timeout=3600)
 
         home_state = _home_state(region)
         city_q = (
@@ -404,8 +411,12 @@ def region_index(region):
         recent_inspections = (
             db.session.query(Inspection, Restaurant)
             .join(Restaurant)
-            .filter(Restaurant.region == region, Inspection.not_future())
-            .order_by(Inspection.inspection_date.desc())
+            .filter(
+                Restaurant.region == region,
+                Inspection.inspection_date == Restaurant.latest_inspection_date,
+                Inspection.not_future(),
+            )
+            .order_by(Restaurant.latest_inspection_date.desc())
             .limit(20)
             .all()
         )

@@ -372,12 +372,16 @@ def compute_region(region: str) -> dict | None:
     )
     hist_rows = (
         db.session.query(bucket_expr.label('bucket'),
-                         func.count(Inspection.id).label('cnt'))
-        .join(Restaurant, Inspection.restaurant_id == Restaurant.id)
+                         func.count(Restaurant.id).label('cnt'))
+        .select_from(Restaurant)
+        .join(Inspection, db.and_(
+            Inspection.restaurant_id == Restaurant.id,
+            Inspection.inspection_date == Restaurant.latest_inspection_date,
+        ))
         .filter(Restaurant.region == region,
+                Restaurant.latest_inspection_date.isnot(None),
                 Inspection.score.isnot(None),
-                Inspection.score >= 0,
-                Inspection.not_future())
+                Inspection.score >= 0)
         .group_by(bucket_expr)
         .order_by(bucket_expr)
         .all()

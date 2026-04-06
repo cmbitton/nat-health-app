@@ -34,7 +34,7 @@ def get_nearby_restaurants(restaurant, limit=3):
                         restaurant.latitude - r, restaurant.latitude + r),
                     Restaurant.longitude.between(
                         restaurant.longitude - r, restaurant.longitude + r),
-                    Restaurant.inspections.any(),
+                    Restaurant.latest_inspection_date.isnot(None),
                 )
                 .limit(50)
                 .all()
@@ -57,7 +57,7 @@ def get_nearby_restaurants(restaurant, limit=3):
             Restaurant.region == restaurant.region,
             Restaurant.city == restaurant.city,
             Restaurant.id != restaurant.id,
-            Restaurant.inspections.any(),
+            Restaurant.latest_inspection_date.isnot(None),
         )
         .limit(limit)
         .all()
