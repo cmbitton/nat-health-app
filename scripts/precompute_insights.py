@@ -122,6 +122,46 @@ def compute_region(region: str) -> dict | None:
     )
     desc_map = {r.violation_code: r.description for r in desc_rows}
 
+    # Rephrase standard/requirement text as violation descriptions
+    _DESC_OVERRIDES = {
+        "Non-food contact surfaces clean":
+            "Non-food contact surfaces not clean",
+        "Food & non-food contact surfaces cleanable, properly designed, constructed, & used":
+            "Food or non-food contact surfaces not properly designed, constructed, or maintained",
+        "Physical facilities installed, maintained, & clean":
+            "Physical facilities not properly installed, maintained, or clean",
+        "Toilet facilities: properly constructed, supplied, & cleaned":
+            "Toilet facilities not properly constructed, supplied, or cleaned",
+        "Contamination prevented during food preparation, storage & display":
+            "Food not protected from contamination during preparation, storage, or display",
+        "Insects, rodents & animals not present; no unauthorized persons":
+            "Facility not protected against entry of insects, rodents, or animals",
+        "Adequate ventilation & lighting; designated areas used":
+            "Inadequate ventilation or lighting; designated areas not properly used",
+        "Proper date marking & disposition":
+            "Ready-to-eat food not properly date-marked or disposed",
+        "Adequate handwashing facilities supplied & accessible":
+            "Handwashing facilities not adequately supplied or accessible",
+        "Wiping cloths: properly used & stored":
+            "Wiping cloths not properly used or stored in sanitizer",
+        "Certification by accredited program, compliance with Code, or correct responses":
+            "No certified food protection manager or food safety certification",
+        "Food separated and protected":
+            "Food not properly separated or protected from contamination",
+        "Food-contact surfaces: cleaned and sanitized":
+            "Food-contact surfaces not properly cleaned and sanitized",
+        "Food-contact surfaces; cleaned & sanitized":
+            "Food-contact surfaces not properly cleaned and sanitized",
+        "Proper cold holding temperatures":
+            "Cold food not held at 41°F or below",
+        "Proper cooling methods used; adequate equipment for temperature control":
+            "Improper cooling methods or inadequate temperature control equipment",
+        "In-use utensils: properly stored":
+            "In-use utensils not properly stored between uses",
+        "Certified food protection manager":
+            "No certified food protection manager on duty",
+    }
+
     _sev_prefix = re.compile(r'^(High Priority|Intermediate|Basic)\s*[-:]\s*', re.IGNORECASE)
     _instance_flags = re.compile(r'\s*\*\*(Corrected On-Site|Repeat Violation|Warning)\*\*', re.IGNORECASE)
     _leading_code_re = re.compile(r'^[\d]+-[\d.]+(?:\([^)]*\))?\s+')
@@ -204,6 +244,8 @@ def compute_region(region: str) -> dict | None:
     for code, total_cnt in _ranked:
         raw_desc = desc_map.get(code, '')
         desc, embedded = _clean_desc(raw_desc) if raw_desc else ('', '')
+        # Apply overrides for requirement-phrased descriptions
+        desc = _DESC_OVERRIDES.get(desc, desc)
         # Look up a better description from our mappings
         better = _fl_lookup(code) or _fda_lookup(code) or _fda_lookup(embedded)
         # Use better description when available and stored one is short/vague/long
