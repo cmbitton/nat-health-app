@@ -1517,9 +1517,7 @@ nav {
     color: var(--text-primary);
     margin-bottom: 5px;
     line-height: 1.4;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: normal;
 }
 .insights-violation-meta {
     display: flex;
@@ -1690,9 +1688,6 @@ nav {
     }
     .insights-neighborhood-cols {
         grid-template-columns: 1fr;
-    }
-    .insights-violation-desc {
-        white-space: normal;
     }
     /* Neighborhood rows wrap to two lines */
     .insights-neighborhood-item {

@@ -101,8 +101,8 @@
             <div class="insights-violation-item">
                 <div class="insights-violation-rank">{{ loop.index }}</div>
                 <div class="insights-violation-body">
-                    <div class="insights-violation-desc" title="{{ v.description }}">
-                        {{ v.description[:100] }}{% if v.description | length > 100 %}…{% endif %}
+                    <div class="insights-violation-desc">
+                        {{ v.description }}
                     </div>
                     <div class="insights-violation-meta">
                         <span class="insights-violation-sev insights-violation-sev--{{ v.severity }}">{{ v.severity }}</span>

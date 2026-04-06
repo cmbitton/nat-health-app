@@ -80,7 +80,7 @@ def compute_region(region: str) -> dict | None:
     print(f'  [{region}] violation_counts: {(_t()-t0)*1000:.0f}ms')
 
     t0 = _t()
-    _top_codes = sorted(code_counts, key=lambda r: r.cnt, reverse=True)[:10]
+    _top_codes = sorted(code_counts, key=lambda r: r.cnt, reverse=True)[:20]
     _code_list = [r.violation_code for r in _top_codes]
     desc_rows = (
         db.session.query(Violation.violation_code, Violation.description)
@@ -92,16 +92,37 @@ def compute_region(region: str) -> dict | None:
     )
     desc_map = {r.violation_code: r.description for r in desc_rows}
     _sev_map  = {r.violation_code: (r.severity or 'minor') for r in _top_codes}
-    top_violations = [
-        {
-            'description': desc_map.get(r.violation_code, r.violation_code),
+
+    _sev_prefix = re.compile(r'^(High Priority|Intermediate|Basic)\s*[-:]\s*', re.IGNORECASE)
+    _instance_flags = re.compile(r'\s*\*\*(Corrected On-Site|Repeat Violation|Warning)\*\*', re.IGNORECASE)
+
+    def _clean_desc(raw: str) -> str:
+        """Strip severity prefix and inspection-instance notes, keep category text only."""
+        s = _sev_prefix.sub('', raw).strip()
+        # Instance notes follow the standard description after ". " — keep first sentence only
+        period_idx = s.find('. ')
+        if period_idx != -1:
+            s = s[:period_idx + 1]
+        s = _instance_flags.sub('', s).strip().rstrip('.')
+        return s or raw
+
+    seen_descs: set = set()
+    top_violations = []
+    for r in _top_codes:
+        raw_desc = desc_map.get(r.violation_code) or r.violation_code or ''
+        desc = _clean_desc(raw_desc)
+        if desc in seen_descs:
+            continue
+        seen_descs.add(desc)
+        top_violations.append({
+            'description': desc,
             'severity':    _sev_map.get(r.violation_code, 'minor'),
             'count':       int(r.cnt),
             'pct':         round(r.cnt / total_inspections * 100, 1)
                            if total_inspections > 0 else 0.0,
-        }
-        for r in _top_codes
-    ]
+        })
+        if len(top_violations) == 10:
+            break
     print(f'  [{region}] violation_descriptions: {(_t()-t0)*1000:.0f}ms')
 
     t0 = _t()
