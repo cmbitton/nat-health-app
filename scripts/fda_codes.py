@@ -156,6 +156,84 @@ CODE_SEVERITY = {
 }
 
 
+# Plain-language descriptions for common FDA Food Code sections.
+# Used as a fallback when the source portal only stores the terse section title.
+CODE_DESCRIPTION: dict[str, str] = {
+    # Employee health / hygiene
+    "2-101.11": "Person in charge not present or does not demonstrate food safety knowledge",
+    "2-102.11": "Person in charge lacks required food safety knowledge",
+    "2-103.11": "Person in charge not ensuring employee compliance with food safety duties",
+    "2-201.11": "Employee with illness or symptoms not restricted or excluded",
+    "2-201.12": "Ill employee not removed from food handling",
+    "2-201.13": "Employee not reporting illness to person in charge",
+    "2-301.11": "Employee did not wash hands before handling food",
+    "2-301.12": "Improper handwashing technique",
+    "2-301.14": "Employee failed to wash hands at a required time",
+    "2-301.15": "Employee washed hands in unapproved sink",
+    "2-302.11": "Employee fingernails not trimmed or maintained",
+    "2-303.11": "Employee wearing prohibited jewelry while preparing food",
+    "2-304.11": "Employee outer clothing not clean",
+    "2-401.11": "Employee eating, drinking, or using tobacco in unapproved area",
+    "2-402.11": "Employee not wearing required hair restraint",
+    "2-501.11": "No written procedures for responding to vomiting or diarrheal events",
+    # Food source / condition
+    "3-101.11": "Food from unapproved or unsafe source",
+    "3-201.11": "Food not from an approved source",
+    "3-202.11": "Food received at improper temperature",
+    "3-301.11": "Bare hand contact with ready-to-eat food",
+    "3-302.11": "Raw animal food not properly separated from ready-to-eat food",
+    "3-302.12": "Food not covered or protected from contamination",
+    "3-304.11": "Food contact with unclean equipment or utensils",
+    "3-304.14": "Wiping cloths not stored in sanitizing solution between uses",
+    "3-304.15": "Gloves not changed or used properly",
+    "3-305.11": "Food stored on floor or in unapproved location",
+    "3-306.11": "Food on display not protected from contamination",
+    "3-307.11": "Food not protected from contamination during storage or preparation",
+    # Cooking and temperature control
+    "3-401.11": "Raw animal food not cooked to required internal temperature",
+    "3-402.11": "Raw fish not frozen before serving raw or undercooked",
+    "3-403.11": "Reheated food did not reach required temperature",
+    "3-501.11": "Food not maintained at proper temperature",
+    "3-501.14": "Food not cooled from 135°F to 70°F within 2 hours or to 41°F within 6 hours",
+    "3-501.15": "Improper cooling method used",
+    "3-501.16": "Potentially hazardous food not held at safe temperature (41°F or below / 135°F or above)",
+    "3-501.17": "Ready-to-eat food not date-marked or date mark exceeded",
+    "3-501.18": "Food past use-by date or date mark not followed",
+    "3-501.19": "Time as a public health control not properly documented",
+    "3-603.11": "Consumer advisory not posted for raw or undercooked animal foods",
+    # Equipment and utensils
+    "4-101.11": "Unapproved materials used for food-contact surfaces",
+    "4-501.11": "Equipment not in good repair",
+    "4-501.114": "Warewashing sanitizer concentration too low",
+    "4-601.11": "Food-contact surfaces not clean and sanitized",
+    "4-602.11": "Food-contact surfaces not cleaned at required frequency",
+    "4-702.11": "Equipment not sanitized before use",
+    "4-703.11": "Improper sanitization method used",
+    # Water, plumbing, and handwashing facilities
+    "5-101.11": "Water from unapproved source",
+    "5-202.12": "Handwashing sink not properly installed",
+    "5-204.11": "No handwashing sink in required location",
+    "5-205.11": "Handwashing sink blocked or not accessible",
+    "5-402.11": "Sewage not disposed of properly",
+    # Handwashing supplies
+    "6-301.11": "No soap available at handwashing sink",
+    "6-301.12": "No paper towels or hand dryer at handwashing sink",
+    "6-302.11": "Toilet facilities not properly constructed or maintained",
+    # Physical facilities
+    "6-501.11": "Physical facility not maintained in good repair",
+    "6-501.12": "Physical facility not cleaned as often as necessary",
+    "6-501.111": "Evidence of insects, rodents, or other pests",
+    "6-501.115": "Unnecessary items or dead animals present",
+    # Chemicals and toxic substances
+    "7-201.11": "Toxic substances not properly stored away from food",
+    "7-202.11": "Pesticide not approved for use in food establishment",
+    "7-204.11": "Chemical sanitizer used at improper concentration",
+    # Permit and compliance
+    "8-304.11": "Required permit information not displayed",
+    "8-302.11": "Operating without a valid permit",
+}
+
+
 def code_weight(code: str) -> int:
     """Severity weight from FDA code string. Falls back to base code (no subsection)."""
     import re

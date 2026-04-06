@@ -12,6 +12,11 @@ from datetime import date, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+try:
+    from scripts.fda_codes import CODE_DESCRIPTION as _FDA_DESC
+except Exception:
+    _FDA_DESC = {}
+
 from app import create_app
 from app.db import db
 from app.models.restaurant import Restaurant
@@ -111,6 +116,9 @@ def compute_region(region: str) -> dict | None:
     for r in _top_codes:
         raw_desc = desc_map.get(r.violation_code) or r.violation_code or ''
         desc = _clean_desc(raw_desc)
+        # If description is still a terse section title, use our FDA code lookup
+        if len(desc) < 40 and r.violation_code and r.violation_code in _FDA_DESC:
+            desc = _FDA_DESC[r.violation_code]
         if desc in seen_descs:
             continue
         seen_descs.add(desc)
