@@ -160,6 +160,13 @@ def compute_region(region: str) -> dict | None:
             "In-use utensils not properly stored between uses",
         "Certified food protection manager":
             "No certified food protection manager on duty",
+        # Houston — terse section titles and verbose regulatory text
+        "Hand-washing sink supplies":
+            "No soap, paper towels, or hand dryer at handwashing sink",
+        "Plumbing fixture installation":
+            "Plumbing fixtures not properly installed or maintained",
+        "Hand Drying Provision":
+            "No paper towels or hand dryer at handwashing sink",
     }
 
     _sev_prefix = re.compile(r'^(High Priority|Intermediate|Basic)\s*[-:]\s*', re.IGNORECASE)
@@ -189,6 +196,11 @@ def compute_region(region: str) -> dict | None:
             else:
                 s = first  # keep first sentence
         s = s.strip().rstrip('.')
+        # Cap long regulatory text at word boundary
+        if len(s) > 100:
+            idx = s.rfind(' ', 0, 100)
+            if idx > 40:
+                s = s[:idx].rstrip(' ,;/')
         if s:
             s = s[0].upper() + s[1:]
         return s or raw, embedded
