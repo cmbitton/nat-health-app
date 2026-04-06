@@ -143,14 +143,11 @@ def compute_region(region: str) -> dict | None:
     for code, total_cnt in _ranked:
         raw_desc = desc_map.get(code, '')
         desc = _clean_desc(raw_desc) if raw_desc else ''
-        # If description is missing or still looks like a raw code, try FDA lookup
+        fda = _fda_lookup(code)
+        # Prefer FDA lookup when stored desc is missing, too short, or regulation-length
+        if fda and (not desc or len(desc) < 15 or len(desc) > 100 or desc == code):
+            desc = fda
         if not desc or len(desc) < 5 or desc == code:
-            desc = _fda_lookup(code)
-        elif len(desc) < 40:
-            fda = _fda_lookup(code)
-            if fda:
-                desc = fda
-        if not desc or desc == code:
             continue  # skip entries we can't describe meaningfully
         if desc in seen_descs:
             continue
